@@ -1,0 +1,19 @@
+# python
+__pycache__/
+*.pyc
+.pytest_cache/
+.ipynb_checkpoints/
+.venv/
+venv/
+
+# data and model artifacts (the IEEE-CIS CSVs are large and licensed by Kaggle; never commit them)
+data/*
+!data/.gitkeep
+models/*
+!models/.gitkeep
+runs/
+*.pt
+
+# tooling
+wandb/
+.superpowers/
