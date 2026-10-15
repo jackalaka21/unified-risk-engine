@@ -3,6 +3,7 @@
 Date: 2026-10-15
 Repo: `unified-risk-engine` (separate from `deep-feedback-control`).
 Decisions already made with the user: real data is IEEE-CIS with a *derived* default label; Jupyter notebooks are required; leakage is controlled with **temporal neighbour sampling (Option B)**, with a transductive masked graph (Option A) as the fallback; the repo is private on GitHub.
+Amended 2026-10-15 after the user asked about provenance and software versions: Project 2 uses its own, newer environment (section 9), and the spike scope and risks were extended (sections 11 and 13). Provenance of the design is in section 14.
 Working assumption (the user did not answer): the pipeline is built and tested against a generated IEEE-CIS-shaped fixture while the user downloads the real data; the real-data run happens when the files land in `data/`.
 
 ## 1. Goal and success criteria
@@ -44,7 +45,7 @@ Every node has a `time`: a transaction's is `TransactionDT`; an entity node's is
 
 **Users** are split once, at random with a fixed seed, 70/15/15 into train/validation/test users.
 
-**Temporal sampling.** Training and inference use `NeighborLoader` with `time_attr="time"`: for a seed at time `t`, only neighbours with `time <= t` are visible. No future transaction or entity can influence a prediction. (Transactions sharing the same timestamp can see each other's features, never labels; this is documented.)
+**Temporal sampling.** Training and inference use `NeighborLoader` with `time_attr="time"`: for a seed at time `t`, only neighbours with `time <= t` are visible. No future transaction or entity can influence a prediction. Whether a neighbour with an *equal* timestamp is visible depends on the PyG version (the docs say strictly earlier in 2.2 and earlier-or-equal in later releases), so the spike verifies the behaviour of the installed version. Either way only features, never labels, are visible, and the README states which rule applies.
 
 **Fraud head**
 - Seeds are transactions, each with its own time.
@@ -100,7 +101,13 @@ unified-risk-engine/
 ```
 
 - Notebooks drive the same functions as the scripts (no duplicated logic). Notebook 01: data checks, label prevalence and threshold choice, split and leakage checks, graph statistics. Notebook 02: training, evaluation and the baseline comparison. Notebook 03: explanations. `DFC_QUICK`-style switch (`URE_QUICK=1`) runs a tiny smoke version.
-- Environment: the same Python 3.14 venv family as the sibling project, with pins: `torch==2.11.0` (CUDA 12.8 build), `torch-geometric==2.8.1`, `pyg-lib==0.9.0+pt211cu128` from `https://data.pyg.org/whl/torch-2.11.0+cu128.html` (a wheel for this setup was confirmed to exist with a dry run), pandas, scikit-learn, matplotlib, pyyaml, pytest, jupyter packages. `pyg-lib` provides the neighbour sampling that `NeighborLoader` needs.
+- Environment: **its own new virtual environment**, separate from the sibling project's (whose published results were produced with torch 2.11 and whose requirements pin it). Python 3.14. Target stack, checked for availability on 2026-10-15 with dry runs (nothing installed yet):
+  - `torch==2.14.1` built for CUDA 13.0 (`https://download.pytorch.org/whl/cu130`; the driver reports CUDA 13.1).
+  - `torch-geometric==2.8.1` (the latest release).
+  - `pyg-lib==0.9.0+pt214cu130` from `https://data.pyg.org/whl/torch-2.14.0+cu130.html`. That wheel is built against torch 2.14.0; the spike confirms it loads and samples correctly under 2.14.1.
+  - The latest releases at install time of pandas, scikit-learn, matplotlib, pyyaml, pytest and the jupyter packages, then pinned exactly in `requirements.txt`.
+  - **Fallback if the spike finds a problem with the newer stack:** `torch==2.11.0` (CUDA 12.8) with `pyg-lib==0.9.0+pt211cu128` from `https://data.pyg.org/whl/torch-2.11.0+cu128.html`. No `pyg-lib` wheels exist for the CUDA 12.8 builds of torch 2.12 to 2.14.
+  - `pyg-lib` provides the neighbour sampling that `NeighborLoader` needs.
 
 ## 10. Tests
 
@@ -111,6 +118,10 @@ On the fixture: schema and column checks; feature transformer fitted on train on
 | Risk | Plan |
 |---|---|
 | Temporal sampling is unsupported or buggy for hetero graphs in PyG 2.8.1 / pyg-lib 0.9 | The **first plan task is a spike** on the fixture that checks it and the leakage property; otherwise fall back to Option A and tell the user |
+| The PyG docs do not say whether `time` can be set per node type on a heterogeneous graph | The spike tests it; if needed, give every node type a `time` (entity nodes use first-seen time, as designed) |
+| Temporal sampling switches on `disjoint` mode automatically (one subgraph per seed), which can multiply memory and run time | The spike measures memory and speed on a realistically sized fixture before the batch sizes and neighbour counts are fixed; reduce them if needed |
+| Equal-timestamp visibility changed between PyG releases | The spike checks the installed version's rule; the README states it |
+| `pyg-lib` built for torch 2.14.0 may not load under torch 2.14.1, or the newest torch may break another dependency | The spike imports and exercises it first; fall back to the pinned torch 2.11 stack (section 9) |
 | `GNNExplainer` does not support the hetero model as written | Spike early; fall back to explaining a homogeneous projection of the neighbourhood, or feature-mask-only, and say so |
 | 8 GB GPU memory or run time too high | Smaller batch, fewer neighbours, smaller hidden size; measure in the spike before committing to the schedule |
 | The default proxy is too rare or too easy | Choose thresholds by prevalence only; at least 30 positives per split; state the coupling with fraud plainly |
@@ -127,6 +138,14 @@ On the fixture: schema and column checks; feature transformer fitted on train on
 
 ## 13. Verification plan
 
-- Spike first (temporal hetero sampling, GNNExplainer on a hetero model, memory and speed on the fixture), then `pytest` green on the fixture.
+- Spike first, in the new environment: install the target stack; check `pyg-lib` loads under torch 2.14.1; temporal sampling on a heterogeneous graph (per-node-type `time`, the equal-timestamp rule, no neighbour later than its seed, the effect of `disjoint` mode on memory and speed); GNNExplainer on a hetero model. Then `pytest` green on the fixture.
 - Real-data run when the files are supplied: record dataset size and prevalence, train 3 seeds and the baseline, and compare.
 - README numbers are checked programmatically against the output CSVs; a fresh clone is tested; a fresh reviewer reviews the whole branch; nothing is pushed without asking.
+
+## 14. Provenance and references
+
+Option B is **not copied from a single paper**; it combines established pieces. Status of each reference:
+
+- **Verified this session (read via search):** the PyG `NeighborLoader` temporal-sampling parameters (`time_attr`, `input_time`, `temporal_strategy` in `"uniform"` or `"last"`, automatic `disjoint` mode) and their version-dependent semantics, from the PyG documentation; and *Relational Deep Learning: Graph Representation Learning on Relational Databases* (Fey, Hu, Huang, Leskovec and others, arXiv 2312.04615), which describes time-consistent sampling on temporal heterogeneous graphs and is the closest published precedent. That PyG's feature descends directly from that paper is **not confirmed**.
+- **Cited from memory, not looked up this session:** GAT (Velickovic et al., ICLR 2018), GATv2 (Brody, Alon and Yahav, ICLR 2022), Focal Loss (Lin et al., ICCV 2017), GNNExplainer (Ying et al., NeurIPS 2019), the PyG library (Fey and Lenssen, 2019), and the IEEE-CIS Fraud Detection Kaggle competition (data provided by Vesta). Check them before citing in anything formal.
+- **This project's own design choices, with no published basis claimed:** the user-level split rule that keeps held-out users' transactions out of fraud training, the fraud-history default proxy, and the alternating-batch multi-task loop.
