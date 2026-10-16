@@ -44,7 +44,7 @@ Edges: `user -> transaction`, `transaction -> email_domain`, `transaction -> dev
 
 **Users** are split once at random with a fixed seed, 70/15/15 into train/validation/test users.
 
-**Temporal sampling.** `NeighborLoader` with `time_attr="time"`: for a seed at time `t`, only neighbours with `time <= t` are visible, so no future transaction or entity can influence a prediction. Equal-timestamp visibility depends on the PyG release (strictly earlier in 2.2, earlier-or-equal later); the spike verifies the installed rule and the README states it. Only features, never labels, are ever visible.
+**Temporal sampling.** `NeighborLoader` with `time_attr="time"`: for a seed at time `t`, only neighbours with `time <= t` are visible, so no future transaction or entity can influence a prediction. PyG 2.8.1 shows equal-timestamp neighbours (earlier-or-equal; the spike verified it), which an online scorer cannot reproduce for transactions that have not arrived yet. So the graph's `time` is arrival order (rows sorted by `TransactionDT` then `TransactionID`): transactions that share a second are ordered by ID, and a seed never sees a same-second transaction that arrives after it, offline or online. Only features, never labels, are ever visible.
 
 **Fraud head:** seeds are transactions at their own times. Train rows = train-period transactions of **train users**. Validation and test rows = all transactions in the validation and test periods (any user), excluding embargo windows.
 

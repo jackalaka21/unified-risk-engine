@@ -2,7 +2,8 @@
 
 It reproduces PyG temporal neighbour sampling with the "last" strategy on a two-hop graph: the seed transaction
 connects to its user, email domain and device; each of those connects to its `fanouts[1]` most recent
-transactions at or before the seed time. The new transaction is always the most recent of its own entities.
+transactions that arrived no later than the seed. Graph time is arrival order (see pipeline.graph_builder), so
+transactions sharing a second are ordered by ID and the new transaction is always the most recent of its own entities.
 """
 from __future__ import annotations
 
@@ -121,6 +122,8 @@ class GraphIndex:
         return m.rows[max(0, hi - k):hi]
 
     def subgraph(self, keys, t, x_new) -> Subgraph:
+        """The neighbourhood of a transaction arriving now. `t` is kept for the caller's convenience: training orders
+        transactions by arrival (rank), so every indexed transaction is an earlier neighbour whatever its raw timestamp."""
         keys = _clean(keys)
         tx_rows, tx_x, local = [-1], [np.asarray(x_new, np.float32)], {}
         entity_keys = {e: [] for e in ENTITIES}
@@ -131,7 +134,7 @@ class GraphIndex:
             into, out = EDGES[e]
             entity_keys[e].append(key)
             edges.setdefault(into, []).append((0, 0))
-            for row in self.lookup(e, key, t, self.k2 - 1):
+            for row in self.lookup(e, key, np.inf, self.k2 - 1):         # everything indexed arrived earlier
                 if row not in local:
                     local[row] = len(tx_rows)
                     tx_rows.append(row)

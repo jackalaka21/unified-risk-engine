@@ -58,16 +58,13 @@ def check_parity(prepared, make_scorer, n=200, atol=1e-4) -> dict:
     offline_prep.cfg = cfg
     scorer = make_scorer()
     start = len(scorer.index)
-    rows = np.arange(start, min(start + 3 * n, len(prepared.df)))
-    times = prepared.df["TransactionDT"].to_numpy()
-    unique = pd.Series(times).map(pd.Series(times).value_counts()).to_numpy() == 1
+    rows = np.arange(start, min(start + n, len(prepared.df)))
     online = np.array(scorer.score_batch([payload_of(prepared.df, int(i)) for i in rows]))
     offline = predict_scores(offline_prep, scorer.model, scorer.heads, "fraud", rows, scorer.device)
-    keep = unique[rows]
-    diff = float(np.abs(online[keep][:n] - offline[keep][:n]).max()) if keep.any() else 0.0
+    diff = float(np.abs(online - offline).max()) if len(rows) else 0.0
     if diff > atol:
         raise ParityError(f"online and offline scores differ by {diff:.2e} (> {atol}); fix train/serve skew before benchmarking")
-    return {"checked": True, "max_abs_diff": diff, "n_rows": int(min(keep.sum(), n)), "reason": ""}
+    return {"checked": True, "max_abs_diff": diff, "n_rows": int(len(rows)), "reason": ""}
 
 
 def bench_inprocess(make_scorer, payloads, batch_size, warmup_batches=3) -> dict:

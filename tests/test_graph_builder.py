@@ -23,13 +23,25 @@ def test_node_counts(prep):
     assert g["device"].num_nodes == df["device"].nunique()
 
 
-def test_times_are_transaction_times_and_first_seen_for_entities(prep):
+def test_graph_time_is_arrival_order_so_equal_timestamps_never_see_later_rows(prep):
     g, df = prep.graph, prep.df
-    assert torch.equal(g["transaction"].time, torch.as_tensor(df["TransactionDT"].to_numpy(np.int64)))
-    first = df.groupby("user")["TransactionDT"].min()
+    assert torch.equal(g["transaction"].time, torch.arange(len(df)))             # strictly increasing: ties broken by row order
+    first_row = df.reset_index().groupby("user")["index"].min()
     names = prep.entity_index["user"]
     for node in (0, 5, 17):
-        assert int(g["user"].time[node]) == int(first[names[node]])
+        assert int(g["user"].time[node]) == int(first_row[names[node]])
+    assert g.t_train_rank == int((df["TransactionDT"] <= prep.periods.t_train).sum()) - 1
+
+
+def test_rank_time_breaks_ties_between_equal_timestamps(raw_frames):
+    from pipeline.config import load_config
+    from tests.fixtures import fixture_overrides
+
+    tx = raw_frames[0].copy()
+    tx["TransactionDT"] = (tx["TransactionDT"] // 3600) * 3600                  # many transactions share a timestamp
+    p = prepare(load_config(overrides=fixture_overrides()), df=tx)
+    assert p.df["TransactionDT"].duplicated().any()
+    assert (p.graph["transaction"].time[1:] > p.graph["transaction"].time[:-1]).all()
 
 
 def test_rows_without_entities_have_no_edges(prep):

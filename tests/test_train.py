@@ -70,7 +70,7 @@ def test_sampled_neighbours_never_come_from_the_future(prep):
         assert (batch[nt].time <= seed_time[batch[nt].batch]).all(), nt
     users = np.flatnonzero(prep.graph["user"].val_mask.numpy())[:16]
     ub = next(iter(make_loader(prep, "user", users, 16, False)))
-    assert (ub["transaction"].time <= prep.graph.t_train).all()
+    assert (ub["transaction"].time <= prep.graph.t_train_rank).all()
 
 
 def test_empty_seed_set_gives_empty_predictions(prep):

@@ -53,7 +53,7 @@ def default_spec(prepared, variant: str, seed: int) -> RunSpec:
 def _times(prepared, node_type, idx):
     if node_type == "transaction":
         return prepared.graph["transaction"].time.numpy()[idx]
-    return np.full(len(idx), int(prepared.graph.t_train), dtype=np.int64)
+    return np.full(len(idx), int(prepared.graph.t_train_rank), dtype=np.int64)
 
 
 def make_loader(prepared, node_type, idx, batch_size, shuffle):

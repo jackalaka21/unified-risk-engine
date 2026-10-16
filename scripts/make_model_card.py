@@ -92,7 +92,7 @@ def build_model_card(out_dir, reports_dir, fixture=False) -> str:
     parts.append("## Leakage controls\n\n- Chronological split: train, validation, test, separated by an embargo so late labels cannot cross a boundary.\n"
                  "- Users are split into disjoint train, validation and test groups; the account label uses history up to the end of training only.\n"
                  "- Feature statistics are fitted on the train period only; history features are strictly causal.\n"
-                 "- Neighbour sampling only reaches transactions at or before the seed transaction's time.\n"
+                 "- Neighbour sampling only reaches transactions that arrived no later than the seed (equal timestamps are ordered by transaction ID).\n"
                  "- The history-aware baseline gets hand-built history features (counts, amounts and recency per user, email domain and device, from strictly earlier transactions); the graph model gets the same per-transaction features and has to learn history through message passing.\n")
     parts.append("## Results\n\n" + results_markdown(fraud, tables["account"]) + "\n")
     parts.append("Cost uses an assumed review cost per false alert; compare it with `cost_flag_none`, the cost of flagging nothing. "

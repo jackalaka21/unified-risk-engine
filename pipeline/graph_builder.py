@@ -25,7 +25,11 @@ def build_graph(df, x, periods, user_split, account, entity_codes=None):
     data = HeteroData()
     data["transaction"].x = torch.as_tensor(np.asarray(x), dtype=torch.float32)
     data["transaction"].y = torch.as_tensor(df["isFraud"].to_numpy(np.int64))
-    data["transaction"].time = torch.as_tensor(times)
+    # Graph time is arrival order (rows are sorted by TransactionDT, then TransactionID), not the raw second: transactions
+    # that share a second are ordered by ID, so a seed never sees a same-second transaction that arrives after it. The
+    # online scorer cannot see future arrivals either, which is what makes serving reproduce the offline scores.
+    rank = np.arange(n, dtype=np.int64)
+    data["transaction"].time = torch.as_tensor(rank)
     masks = fraud_masks(df, periods, user_split)
     for name, mask in masks.items():
         data["transaction"][f"{name}_mask"] = torch.as_tensor(mask)
@@ -39,7 +43,7 @@ def build_graph(df, x, periods, user_split, account, entity_codes=None):
         data[node_type].num_nodes = n_ent
         valid = codes >= 0
         first = np.full(n_ent, I64MAX, dtype=np.int64)
-        np.minimum.at(first, codes[valid], times[valid])
+        np.minimum.at(first, codes[valid], rank[valid])
         data[node_type].time = torch.as_tensor(first)
         rows = rows_all[valid]
         ent = torch.as_tensor(codes[valid], dtype=torch.long)
@@ -57,4 +61,5 @@ def build_graph(df, x, periods, user_split, account, entity_codes=None):
     for name in ("train", "val", "test"):
         data["user"][f"{name}_mask"] = torch.as_tensor((table["split"].to_numpy() == name) & eligible)
     data.t_train = int(periods.t_train)
+    data.t_train_rank = int(np.searchsorted(times, periods.t_train, side="right")) - 1   # newest row of the train period
     return data, index

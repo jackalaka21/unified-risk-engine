@@ -12,11 +12,13 @@ from tests.fixtures import fixture_overrides, make_fixture
 HAS_TEMPORAL = importlib.util.find_spec("pyg_lib") is not None
 
 
-def last_rule_prepared():
+def last_rule_prepared(tied=False):
     overrides = fixture_overrides()
     overrides["train"]["temporal_strategy"] = "last"
     tx, identity = make_fixture()
     frame = tx.merge(identity, on="TransactionID", how="left")      # device nodes and edges need the identity file
+    if tied:
+        frame["TransactionDT"] = (frame["TransactionDT"] // 3600) * 3600       # many transactions share a second
     return prepare(load_config(overrides=overrides), df=frame)
 
 

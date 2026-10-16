@@ -13,7 +13,7 @@ Honest scope: IEEE-CIS has no real credit-default labels. The account-level targ
 ## Design in brief
 
 - **Graph:** transaction, user (`card1` + `addr1`), email-domain and device nodes with reverse edges; every node has a `time` (a transaction's `TransactionDT`, an entity's first-seen time).
-- **Leakage control:** chronological train/validation/test periods separated by a label-delay **embargo**; users split into disjoint groups; account labels use history up to the end of training only; feature statistics fitted on the train period only; history features use strictly earlier transactions and never labels; neighbour sampling only reaches transactions at or before the seed's time (equal timestamps are visible: the earlier-or-equal rule of PyG 2.8.1).
+- **Leakage control:** chronological train/validation/test periods separated by a label-delay **embargo**; users split into disjoint groups; account labels use history up to the end of training only; feature statistics fitted on the train period only; history features use strictly earlier transactions and never labels; neighbour sampling only reaches transactions at or before the seed's time (graph time is arrival order, so transactions that share a second are ordered by ID and a seed never sees a same-second transaction that arrives after it).
 - **Models:** 2-layer GATv2 backbone, fraud and account heads, Focal Loss, alternating transaction and user mini-batches. Variants: `multitask`, `fraud_only`, `account_only`, `no_graph`.
 - **Metrics:** PR-AUC first; alert-budget recall and precision, amount-weighted recall, expected cost (an assumed review cost), Brier and ECE, recall at 1% FPR, per-week curves; bootstrap intervals over test examples; three seeds give a range, not a confidence interval.
 
@@ -71,7 +71,7 @@ curl -X POST localhost:8000/score_batch -H "Content-Type: application/json" -d '
 - `POST /score` and `/score_batch` validate the body (422 when malformed); a request older than the newest indexed transaction gets 409; 503 until a model is loaded.
 - Scoring is serialised by one lock because the index is mutable, so extra clients add queueing, not throughput.
 - The headline results use the `"uniform"` neighbour rule (training); serving uses `"last"`. The model card reports the test PR-AUC under both.
-- A parity test replays transactions through the online scorer and requires the offline `"last"`-rule scores to match; the benchmark refuses to report if it does not. Rows that share a timestamp with another transaction are excluded from that comparison, because an online scorer cannot see a transaction that has not arrived yet.
+- A parity test replays transactions through the online scorer and requires the offline `"last"`-rule scores to match; the benchmark refuses to report if it does not. Because graph time is arrival order, the comparison includes transactions that share a timestamp with others.
 - `docker build -t ure-scorer .` builds a CPU image from `artifacts/`; CI builds it and smoke-tests it.
 - Latency numbers come from one laptop replaying historical data, not a production environment; the 100 ms p99 budget is illustrative.
 

@@ -10,9 +10,10 @@ from tests.serving_helpers import HAS_TEMPORAL, last_rule_prepared, make_scorer
 needs_temporal = pytest.mark.skipif(not HAS_TEMPORAL, reason="temporal sampling needs pyg-lib")
 
 
-@pytest.fixture(scope="module")
-def prep():
-    return last_rule_prepared()
+@pytest.fixture(scope="module", params=["unique", "tied"])
+def prep(request):
+    """Both parity gates also run on a frame whose timestamps are heavily shared."""
+    return last_rule_prepared(tied=request.param == "tied")
 
 
 def label_offline(prep, nt, node_id):
