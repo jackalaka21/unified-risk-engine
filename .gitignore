@@ -9,11 +9,14 @@ venv/
 # data and model artifacts (the IEEE-CIS CSVs are large and licensed by Kaggle; never commit them)
 data/*
 !data/.gitkeep
-models/*
-!models/.gitkeep
 runs/
 *.pt
 
 # tooling
 wandb/
 .superpowers/
+
+# generated outputs
+outputs/
+artifacts/
+reports/
