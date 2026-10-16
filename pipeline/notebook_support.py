@@ -105,3 +105,35 @@ def plot_drift(drift: pd.DataFrame):
         ax.legend()
     fig.tight_layout()
     return fig
+
+
+def plot_latency(df: pd.DataFrame, budget_ms: float = 100.0):
+    d = df[df["mode"].isin(["inprocess", "http"])].copy()
+    d["label"] = (d["model"] + " " + d["device"] + " " + d["mode"] + " b" + d["batch_size"].astype(str)
+                  + " c" + d["concurrency"].astype(str))
+    fig, ax = plt.subplots(figsize=(8, 0.35 * len(d) + 1.5))
+    y = np.arange(len(d))
+    ax.barh(y, d["p99_ms"], color="#e45756", label="p99")
+    ax.barh(y, d["p95_ms"], color="#f58518", label="p95")
+    ax.barh(y, d["p50_ms"], color="#4c78a8", label="p50")
+    ax.axvline(budget_ms, color="grey", linestyle="--", label=f"illustrative budget {budget_ms:g} ms")
+    ax.set_yticks(y, d["label"])
+    ax.set_xlabel("milliseconds per call (log scale)"), ax.set_xscale("log")
+    ax.legend()
+    fig.tight_layout()
+    return fig
+
+
+def plot_breakdown(df: pd.DataFrame):
+    comps = ["feature_transform_ms", "neighbour_lookup_ms", "model_forward_ms", "index_update_ms"]
+    d = df[(df["mode"] == "inprocess") & (df["batch_size"] == 1)].dropna(subset=comps)
+    d = d.assign(label=d["model"] + " " + d["device"])
+    fig, ax = plt.subplots(figsize=(7, 3.2))
+    left = np.zeros(len(d))
+    for c in comps:
+        ax.barh(d["label"], d[c], left=left, label=c.replace("_ms", ""))
+        left += d[c].to_numpy()
+    ax.set_xlabel("milliseconds per request (batch size 1)")
+    ax.legend()
+    fig.tight_layout()
+    return fig

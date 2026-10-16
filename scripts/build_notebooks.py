@@ -77,6 +77,25 @@ NOTEBOOKS = {
                  "display(Markdown((r / 'explanations.md').read_text(encoding='utf-8')))"),
         ("code", "display(Image(filename=str(r / 'feature_importance.png')))"),
     ],
+    "05_serving_latency.ipynb": [
+        ("md", "# 5. Serving and latency\n\nThe model scored one transaction at a time by a service that keeps a time-sorted "
+               "neighbour index. Numbers come from one machine replaying historical data; they are not a production claim, and "
+               "the 100 ms budget is an illustrative assumption."),
+        ("code", SETUP + "\nimport json\nlat = load_results('latency.csv')\nmeta = json.loads((out_dir() / 'latency_meta.json').read_text())\n"
+                 "print('FIXTURE RESULTS - not findings' if meta['fixture'] else 'real data')\nprint('hardware:', meta['hardware'])\n"
+                 "print('parity with the offline scores:', meta['parity'])"),
+        ("code", "cols = ['model', 'device', 'mode', 'batch_size', 'concurrency', 'p50_ms', 'p95_ms', 'p99_ms', 'throughput_rps', 'p99_within_budget']\n"
+                 "lat[cols].round(2)"),
+        ("code", "plot_latency(lat, meta['budget_ms']);"),
+        ("md", "## Where the time goes (batch size 1)"),
+        ("code", "plot_breakdown(lat);"),
+        ("md", "## Stock sampler versus the custom index\n\nThe `stock_neighbor_loader` row is the cost of sampling the neighbourhood "
+               "alone with PyG's loader built per request; compare it with the `neighbour_lookup` share above."),
+        ("code", "lat[lat['mode'] == 'lookup_only'][['model', 'p50_ms', 'p95_ms', 'p99_ms']].round(2)"),
+        ("md", "Index size and the concurrency caveat: the metadata printed above lists the indexed transactions and the serialised "
+               "index size. Scoring is serialised by one lock, so extra clients do not add throughput; the multi-client row shows "
+               "the queueing cost."),
+    ],
 }
 
 

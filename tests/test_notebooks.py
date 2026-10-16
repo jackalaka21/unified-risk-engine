@@ -12,7 +12,7 @@ from tests.fixtures import fixture_overrides, make_fixture
 
 
 def test_every_notebook_cell_kind_is_valid():
-    assert len(NOTEBOOKS) == 4
+    assert len(NOTEBOOKS) == 5
     for cells in NOTEBOOKS.values():
         assert cells and {kind for kind, _ in cells} <= {"md", "code"}
 
@@ -36,6 +36,11 @@ def test_notebooks_execute_on_fixture_results(tmp_path, monkeypatch):
     summarize_drift(drift).to_csv(out / "drift_summary.csv", index=False)
     train_variant(prep, default_spec(prep, "multitask", 0), "cpu", tmp_path / "m.pt")
     explain_report(prep, tmp_path / "m.pt", reports, device="cpu")
+    from scripts.benchmark_latency import run_benchmark
+
+    train_variant(prep, default_spec(prep, "fraud_only", 0), "cpu", tmp_path / "f.pt")
+    run_benchmark(prep, tmp_path / "f.pt", out, devices=["cpu"], batch_sizes=(1, 4), n_requests=40, include_http=False,
+                  skip_parity=True, fixture=True, log=lambda *_: None)
     from nbclient import NotebookClient  # not installed in CI, which skips this slow test
 
     monkeypatch.setenv("URE_FIXTURE", "1")

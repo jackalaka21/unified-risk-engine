@@ -44,3 +44,13 @@ def test_plots_draw_something_and_survive_nan_weeks():
     for fig in (ns.plot_pr_auc(fraud), ns.plot_weekly(weekly), ns.plot_calibration(cal), ns.plot_drift(drift)):
         assert len(fig.axes[0].lines) + len(fig.axes[0].patches) + len(fig.axes[0].collections) > 0
         plt.close(fig)
+
+
+def test_latency_plots_draw_something():
+    df = pd.DataFrame({"model": ["gnn", "gnn", "history_tabular"], "device": "cpu", "mode": "inprocess",
+                       "batch_size": [1, 8, 1], "concurrency": 1, "p50_ms": [3.0, 9.0, 1.0], "p95_ms": [4.0, 11.0, 2.0],
+                       "p99_ms": [5.0, 12.0, 2.5], "feature_transform_ms": 0.5, "neighbour_lookup_ms": 0.1,
+                       "model_forward_ms": 2.0, "index_update_ms": 0.05})
+    for fig in (ns.plot_latency(df, budget_ms=100.0), ns.plot_breakdown(df)):
+        assert len(fig.axes[0].patches) + len(fig.axes[0].lines) > 0
+        plt.close(fig)

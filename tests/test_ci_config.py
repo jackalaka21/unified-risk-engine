@@ -31,3 +31,10 @@ def test_serving_requirements_keep_only_what_the_service_imports():
     out = serving_requirements(lines)
     assert set(out) == {"numpy==2.3.0", "pandas==2.3.1", "fastapi==0.115.0", "uvicorn==0.34.0",
                         "torch-geometric==2.8.1", "PyYAML==6.0.2"}
+
+
+def test_workflow_builds_and_smoke_tests_the_container():
+    wf = yaml.safe_load((PROJECT_ROOT / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8"))
+    steps = " ".join(str(s.get("run", "")) for s in wf["jobs"]["container"]["steps"])
+    assert "docker build" in steps and "scripts.smoke_service" in steps and "export_artifacts --fixture" in steps
+    assert wf["jobs"]["container"]["needs"] == "test"
