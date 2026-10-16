@@ -226,3 +226,15 @@ def test_the_card_has_a_findings_section_and_the_cumulative_count_note_is_a_hypo
     card = build_model_card(out, reports)
     assert "## Findings" in card
     assert "hypothesis" in card.lower() and "cumulative" in card.lower()
+
+
+def test_card_text_is_clean(tmp_path):
+    out, reports = write_tables(tmp_path)
+    write_latency(out)
+    pd.read_csv(out / "drift_summary.csv").assign(fixture=False).to_csv(out / "drift_summary.csv", index=False)
+    card = build_model_card(out, reports)
+    assert "features, Users" not in card and "features. Users" in card
+    drift = card.split("## Drift")[1].split("## Explanations")[0]
+    assert "fixture" not in drift and "config_hash" not in drift
+    serving = card.split("## Serving and latency")[1].split("## Limitations")[0]
+    assert "'cpu' rows run on the CPU" in serving and "| 3.20 |" in serving      # two-decimal latencies, not 3.200

@@ -1,0 +1,7 @@
+kind,schedule,mean_pr_auc,slope_per_week,config_hash,fixture
+gnn_fraud_only,retrain,0.3460541939730293,-0.0031098924756308645,0a4fb49dd420,False
+gnn_fraud_only,static,0.3529052135239883,-0.0003720975578870314,0a4fb49dd420,False
+history_stable_tabular,retrain,0.4708165555963808,0.0035524294500485065,0a4fb49dd420,False
+history_stable_tabular,static,0.468461436066679,0.0013667315704047518,0a4fb49dd420,False
+history_tabular,retrain,0.4684169819812834,0.006812103164840125,0a4fb49dd420,False
+history_tabular,static,0.4476683178374395,0.0005954358258102693,0a4fb49dd420,False

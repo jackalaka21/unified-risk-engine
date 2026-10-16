@@ -154,7 +154,7 @@ def build_model_card(out_dir, reports_dir, fixture=False) -> str:
                  "to study whether a temporal graph model adds value over strong tabular baselines. Not for production decisions, "
                  "credit, or any decision about a person.\n")
     parts.append("## Data\n\nIEEE-CIS Fraud Detection (Kaggle; Vesta Corporation): card-not-present e-commerce transactions with "
-                 "anonymised features, Users are an approximation built "
+                 "anonymised features. Users are an approximation built "
                  "from card and address fields, so \"user\" is a proxy for a real account holder. Test-set size and prevalence "
                  "are given above.\n")
     parts.append("## Leakage controls\n\n- Chronological split: train, validation, test, separated by an embargo so late labels cannot cross a boundary.\n"
@@ -169,7 +169,7 @@ def build_model_card(out_dir, reports_dir, fixture=False) -> str:
                      "resamples were kept for every row.\n")
     parts.append("Cost uses an assumed review cost per false alert; compare it with `cost_flag_none`, the cost of flagging nothing. "
                  "Differences smaller than the bootstrap interval or the range over seeds are not evidence of a better model.\n")
-    parts.append("## Drift\n\n" + (_table(tables["drift_summary"].drop(columns=["config_hash"]))
+    parts.append("## Drift\n\n" + (_table(tables["drift_summary"].drop(columns=["config_hash", "fixture"], errors="ignore"))
                                    if "drift_summary" in tables else "The drift study was not run.") + "\n")
     e = tables.get("explain")
     parts.append("## Explanations\n\n" + (
@@ -218,9 +218,11 @@ def latency_markdown(df: pd.DataFrame, meta: dict) -> str:
     p = meta["parity"]
     parity = (f"Parity check passed: online and offline scores agree (max absolute difference {p['max_abs_diff']:.1e} over {p['n_rows']} transactions)."
               if p["checked"] else f"Parity with the offline scores was not checked ({p['reason']}).")
-    return (_table(d.assign(**{c: d[c].astype(float).round(2) for c in cols[5:]})) + f"\n\n{parity} "
-            f"Latencies are per call, milliseconds, on {meta['hardware'].get('gpu') or 'a CPU-only machine'}; the {meta['budget_ms']:g} ms "
-            "budget is illustrative, not a requirement. One machine replaying historical data is not a production claim.")
+    d = d.assign(**{c: d[c].astype(float).map("{:.2f}".format) for c in cols[5:]})
+    gpu = meta["hardware"].get("gpu") or "none"
+    return (_table(d) + f"\n\n{parity} Latencies are per call, in milliseconds, measured on one laptop (GPU: {gpu}; the "
+            f"'cpu' rows run on the CPU). The {meta['budget_ms']:g} ms budget is illustrative, not a requirement. One machine "
+            "replaying historical data is not a production claim.")
 
 
 def main(argv=None):

@@ -1,0 +1,25 @@
+{
+  "hardware": {
+    "platform": "Windows-11-10.0.26300-SP0",
+    "processor": "AMD64 Family 25 Model 68 Stepping 1, AuthenticAMD",
+    "cpu_count": 16,
+    "python": "3.14.7",
+    "torch": "2.14.1+cu130",
+    "gpu": "NVIDIA GeForce RTX 3070 Ti Laptop GPU"
+  },
+  "budget_ms": 100.0,
+  "budget_note": "illustrative assumption, not a requirement",
+  "config_hash": "0a4fb49dd420",
+  "fixture": false,
+  "parity": {
+    "checked": true,
+    "max_abs_diff": 0.0,
+    "n_rows": 200,
+    "reason": ""
+  },
+  "variant": "multitask",
+  "indexed_transactions": 523934,
+  "index_pickle_mb": 571.332597,
+  "n_requests": 2000,
+  "notes": "one machine replaying historical data; not a production service-level claim"
+}

@@ -1,0 +1,3 @@
+rule,pr_auc,variant,seed,temporal,config_hash
+uniform,0.3463912260060378,multitask,0,True,0a4fb49dd420
+last,0.3496105809969393,multitask,0,True,0a4fb49dd420

@@ -1,0 +1,13 @@
+{
+  "stability": 0.4167492638080873,
+  "fidelity_top": 0.31033796744421127,
+  "fidelity_random": 0.09065269102808088,
+  "n_fidelity": 200,
+  "fidelity_method": "hetero",
+  "pyg_fidelity_plus": null,
+  "pyg_fidelity_minus": null,
+  "pyg_characterization": null,
+  "config_hash": "0a4fb49dd420",
+  "mode": "hetero",
+  "fixture": false
+}
