@@ -33,15 +33,23 @@ def recall_at_fpr(y_val, s_val, y_test, s_test, fpr=0.01) -> dict:
 
 
 def alert_budget(y, s, amount, budget) -> dict:
-    y, s, amount = np.asarray(y), np.asarray(s), np.asarray(amount, dtype=float)
+    """Recall, precision and amount-weighted recall when the top `budget` fraction is flagged.
+
+    Rows tied at the cut-off score share the remaining slots equally (fractional credit), so the result does not depend
+    on row order when scores tie."""
+    y, s, amount = np.asarray(y), np.asarray(s, dtype=float), np.asarray(amount, dtype=float)
     k = max(1, int(round(budget * len(y))))
-    top = np.argsort(-s, kind="stable")[:k]
+    cutoff = np.sort(s)[::-1][k - 1]
+    above, tied = s > cutoff, s == cutoff
+    share = (k - above.sum()) / tied.sum()                    # fraction of each tied row that fits in the budget
+    weight = above + share * tied
     pos = y == 1
-    total = amount[pos].sum()
+    caught, total = (weight * pos).sum(), pos.sum()
+    caught_amount, total_amount = (weight * pos * amount).sum(), amount[pos].sum()
     return {"budget": budget, "k": k,
-            "recall": float(y[top].sum() / pos.sum()) if pos.any() else NAN,
-            "precision": float(y[top].mean()),
-            "amount_recall": float(amount[top][y[top] == 1].sum() / total) if total > 0 else NAN}
+            "recall": float(caught / total) if total else NAN,
+            "precision": float(caught / k),
+            "amount_recall": float(caught_amount / total_amount) if total_amount > 0 else NAN}
 
 
 def _cost(thr, y, s, amount, review_cost) -> float:

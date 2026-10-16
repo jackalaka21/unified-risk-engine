@@ -83,7 +83,7 @@ def test_payload_number_types_do_not_change_the_entity_keys(prep):
 
 def test_a_card_never_seen_with_no_email_or_device_scores_cleanly(prep):
     scorer = make_scorer(prep, len(prep.df) // 2)
-    pay = {"TransactionDT": int(prep.df["TransactionDT"].max()) + 10, "TransactionAmt": 25.0, "ProductCD": "W", "card1": 999999}
+    pay = {"TransactionDT": int(scorer.index.last_time) + 10, "TransactionAmt": 25.0, "ProductCD": "W", "card1": 999999}
     assert 0.0 <= scorer.score(pay) <= 1.0
 
 
@@ -135,3 +135,32 @@ def test_tabular_scorer_matches_the_offline_baseline_predictions(prep):
     rows = list(range(p, p + 40))
     online = scorer.score_batch([payload_of(prep.df, i) for i in rows])
     np.testing.assert_allclose(online, model.predict_proba(X[rows])[:, 1], atol=1e-5)
+
+
+def test_one_future_dated_request_cannot_lock_the_service_out(prep):
+    p = len(prep.df) // 2
+    scorer = make_scorer(prep, p)
+    n = len(scorer.index)
+    far = {**payload_of(prep.df, p), "TransactionDT": int(9e15)}
+    with pytest.raises(ValueError, match="future"):
+        scorer.score(far)
+    assert len(scorer.index) == n
+    assert 0.0 <= scorer.score(payload_of(prep.df, p)) <= 1.0           # normal requests still work afterwards
+
+
+def test_a_non_finite_amount_is_rejected_before_it_touches_the_index(prep):
+    p = len(prep.df) // 2
+    scorer = make_scorer(prep, p)
+    n = len(scorer.index)
+    for bad in (float("inf"), float("-inf"), float("nan")):
+        with pytest.raises(ValueError, match="finite|numbers"):
+            scorer.score({**payload_of(prep.df, p), "TransactionAmt": bad})
+    assert len(scorer.index) == n and 0.0 <= scorer.score(payload_of(prep.df, p)) <= 1.0
+
+
+def test_a_missing_value_in_one_row_does_not_change_the_other_rows_in_a_batch(prep):
+    p = len(prep.df) // 2
+    a, b = payload_of(prep.df, p), {**payload_of(prep.df, p + 1), "card1": None}
+    mixed = make_scorer(prep, p).score_batch([a, b])[0]
+    alone = make_scorer(prep, p).score(a)
+    assert mixed == pytest.approx(alone, abs=1e-6)

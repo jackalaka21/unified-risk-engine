@@ -6,6 +6,8 @@ import threading
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from serving.graph_index import OutOfOrderError
@@ -14,7 +16,7 @@ from serving.graph_index import OutOfOrderError
 class Transaction(BaseModel):
     model_config = ConfigDict(extra="allow")                 # any other raw column is optional and passed through
     TransactionDT: int = Field(ge=0, description="seconds on the dataset's clock; must not go backwards")
-    TransactionAmt: float = Field(ge=0)
+    TransactionAmt: float = Field(ge=0, allow_inf_nan=False)
 
 
 class Batch(BaseModel):
@@ -34,6 +36,12 @@ def create_app(scorer=None, artifacts=None) -> FastAPI:
         yield
 
     app = FastAPI(title="Unified risk engine scorer", lifespan=lifespan)
+
+    @app.exception_handler(RequestValidationError)
+    async def invalid_request(request, exc):
+        # FastAPI's default handler echoes the offending input, which cannot be serialised for inf or nan
+        return JSONResponse(status_code=422, content={"detail": [{"loc": list(e["loc"]), "msg": e["msg"], "type": e["type"]}
+                                                                  for e in exc.errors()]})
 
     def current():
         if state["scorer"] is None:

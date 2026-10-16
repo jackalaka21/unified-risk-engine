@@ -13,6 +13,7 @@ from serving.graph_index import EDGES, ENTITIES, OutOfOrderError, keys_from_fram
 REQUIRED = ("TransactionDT", "TransactionAmt")
 DERIVED = ("user", "email", "device")
 LABEL = "isFraud"
+DEFAULT_FUTURE_SKEW = 30 * 86400      # seconds a request may lie beyond the newest indexed time
 ALL_EDGE_TYPES = [et for pair in EDGES.values() for et in pair]
 
 
@@ -55,9 +56,16 @@ def build_frame(payloads, kinds) -> pd.DataFrame:
             frame[c] = frame[c].astype(object)
         else:
             s = pd.to_numeric(frame[c], errors="coerce")
-            frame[c] = s.astype("int64") if kind == "int" and not s.isna().any() else s.astype("float64")
-    if frame[list(REQUIRED)].isna().any().any():
-        raise ValueError("TransactionDT and TransactionAmt must be numbers")
+            if kind == "int":
+                # nullable integers keep "1000" as "1000" (not "1000.0") even when another row in the batch is missing
+                try:
+                    frame[c] = s.astype("Int64")
+                except TypeError:
+                    raise ValueError(f"column {c} must hold whole numbers") from None
+            else:
+                frame[c] = s.astype("float64")
+    if not np.isfinite(frame[list(REQUIRED)].to_numpy(float)).all():
+        raise ValueError("TransactionDT and TransactionAmt must be finite numbers")
     if LABEL in frame:
         frame[LABEL] = 0                                   # unknown at scoring time and never used by the features
     frame["_pos"] = np.arange(len(frame))
@@ -85,17 +93,21 @@ def collate(subs, device="cpu"):
 
 
 class _BaseScorer:
-    def __init__(self, transformer, index, raw_kinds, version, late, info):
+    def __init__(self, transformer, index, raw_kinds, version, late, info, max_future_skew):
         if late not in ("reject", "clamp"):
             raise ValueError("late must be 'reject' or 'clamp'")
         self.transformer, self.index, self.raw_kinds = transformer, index, raw_kinds
         self.version, self.late, self.info = version, late, info or {}
+        self.max_future_skew = max_future_skew
 
     def _frame(self, payloads):
         return build_frame(payloads, self.raw_kinds)
 
     def _times(self, frame):
         times = frame["TransactionDT"].to_numpy(np.int64)
+        if np.isfinite(self.index.last_time) and times.max() > self.index.last_time + self.max_future_skew:
+            raise ValueError(f"request time {int(times.max())} is more than {self.max_future_skew} s in the future of the newest "
+                             f"indexed time {int(self.index.last_time)}; refusing it so it cannot block later requests")
         if times.min() < self.index.last_time:
             if self.late == "reject":
                 raise OutOfOrderError(f"request time {int(times.min())} is older than the newest indexed time "
@@ -112,8 +124,9 @@ def _lap(timings, name, t0):
 
 
 class OnlineScorer(_BaseScorer):
-    def __init__(self, model, heads, transformer, index, raw_kinds, device="cpu", version="dev", late="reject", info=None):
-        super().__init__(transformer, index, raw_kinds, version, late, info)
+    def __init__(self, model, heads, transformer, index, raw_kinds, device="cpu", version="dev", late="reject", info=None,
+                 max_future_skew=DEFAULT_FUTURE_SKEW):
+        super().__init__(transformer, index, raw_kinds, version, late, info, max_future_skew)
         self.model, self.heads, self.device = model.to(device).eval(), heads.to(device).eval(), device
 
     def score_batch(self, payloads, timings=None):
@@ -123,6 +136,8 @@ class OnlineScorer(_BaseScorer):
         t0 = time.perf_counter()
         frame = self._frame(payloads)
         x = self.transformer.transform(frame)
+        if not np.isfinite(x).all():
+            raise ValueError("the request produced non-finite features")
         _lap(tm, "feature_transform", t0)
         times, amounts = self._times(frame), frame["TransactionAmt"].to_numpy(float)
         subs = []
@@ -149,8 +164,9 @@ class OnlineScorer(_BaseScorer):
 class TabularOnlineScorer(_BaseScorer):
     """The tabular baseline under the same serving protocol; `hist_columns=None` is the naive model."""
 
-    def __init__(self, model, transformer, index, raw_kinds, hist_columns=None, version="dev", late="reject", info=None):
-        super().__init__(transformer, index, raw_kinds, version, late, info)
+    def __init__(self, model, transformer, index, raw_kinds, hist_columns=None, version="dev", late="reject", info=None,
+                 max_future_skew=DEFAULT_FUTURE_SKEW):
+        super().__init__(transformer, index, raw_kinds, version, late, info, max_future_skew)
         self.model, self.hist_columns = model, hist_columns
 
     def score_batch(self, payloads, timings=None):
@@ -160,6 +176,8 @@ class TabularOnlineScorer(_BaseScorer):
         t0 = time.perf_counter()
         frame = self._frame(payloads)
         x = self.transformer.transform(frame)
+        if not np.isfinite(x).all():
+            raise ValueError("the request produced non-finite features")
         _lap(tm, "feature_transform", t0)
         times, amounts = self._times(frame), frame["TransactionAmt"].to_numpy(float)
         rows = []

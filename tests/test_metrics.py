@@ -68,3 +68,13 @@ def test_weekly_table_marks_weeks_without_positives():
     t = weekly_table(times, y, s, start=0)
     assert t["week"].tolist() == [0, 1] and t["n"].tolist() == [7, 7]
     assert not np.isnan(t.loc[0, "pr_auc"]) and np.isnan(t.loc[1, "pr_auc"]) and t.loc[1, "n_pos"] == 0
+
+
+def test_alert_budget_with_tied_scores_does_not_depend_on_row_order():
+    y = np.array([1, 1, 0, 0, 0, 0, 0, 0, 0, 0])
+    amount = np.arange(1, 11, dtype=float)
+    s = np.full(10, 0.5)
+    a = alert_budget(y, s, amount, 0.2)
+    b = alert_budget(y[::-1], s, amount[::-1], 0.2)            # same data, reversed row order
+    assert a["recall"] == pytest.approx(0.2) and a["recall"] == pytest.approx(b["recall"])
+    assert a["precision"] == pytest.approx(0.2) and a["amount_recall"] == pytest.approx(b["amount_recall"])

@@ -86,3 +86,14 @@ def test_concurrent_requests_are_serialised_safely(client_and_payloads):
     [t.start() for t in threads]
     [t.join() for t in threads]
     assert codes == [200] * 16 and client.get("/health").json()["indexed_transactions"] == n0 + 16
+
+
+@pytest.mark.parametrize("amount", ["Infinity", "-Infinity", "NaN"])
+def test_non_finite_numbers_get_422_and_leave_the_service_healthy(client_and_payloads, amount):
+    client, payloads = client_and_payloads
+    n0 = client.get("/health").json()["indexed_transactions"]
+    body = ('{"TransactionDT": %d, "TransactionAmt": %s}' % (payloads[0]["TransactionDT"], amount)).encode()
+    r = client.post("/score", content=body, headers={"Content-Type": "application/json"})
+    assert r.status_code == 422
+    assert client.get("/health").json()["indexed_transactions"] == n0
+    assert client.post("/score", json=payloads[0]).status_code == 200
