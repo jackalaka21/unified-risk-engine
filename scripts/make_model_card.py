@@ -19,6 +19,11 @@ def load_tables(out_dir, reports_dir) -> dict:
     tables = {"fraud": pd.read_csv(out_dir / "results_fraud.csv"), "account": pd.read_csv(out_dir / "results_account.csv")}
     if (out_dir / "drift_summary.csv").exists():
         tables["drift_summary"] = pd.read_csv(out_dir / "drift_summary.csv")
+    if (out_dir / "latency.csv").exists():
+        tables["latency"] = pd.read_csv(out_dir / "latency.csv")
+        tables["latency_meta"] = json.loads((out_dir / "latency_meta.json").read_text(encoding="utf-8"))
+    if (out_dir / "results_sampling_rule.csv").exists():
+        tables["sampling_rule"] = pd.read_csv(out_dir / "results_sampling_rule.csv")
     if (reports_dir / "explain_metrics.json").exists():
         tables["explain"] = json.loads((reports_dir / "explain_metrics.json").read_text(encoding="utf-8"))
     return tables
@@ -27,7 +32,11 @@ def load_tables(out_dir, reports_dir) -> dict:
 def check_single_config(tables: dict) -> str:
     hashes = set()
     for name, t in tables.items():
-        hashes |= set(t["config_hash"].unique()) if isinstance(t, pd.DataFrame) else {t["config_hash"]}
+        if isinstance(t, pd.DataFrame):
+            if "config_hash" in t:                           # the latency table carries its hash in latency_meta
+                hashes |= set(t["config_hash"].unique())
+        else:
+            hashes.add(t["config_hash"])
     if len(hashes) != 1:
         raise ValueError(f"mixed config hashes {sorted(hashes)}: re-run all steps with one configuration")
     return hashes.pop()
@@ -56,6 +65,8 @@ def build_model_card(out_dir, reports_dir, fixture=False) -> str:
     tables = load_tables(out_dir, reports_dir)
     cfg_hash = check_single_config(tables)
     fraud = tables["fraud"]
+    if not fixture and tables.get("latency_meta", {}).get("fixture"):
+        raise ValueError("the latency results are fixture results: re-run the benchmark on real data or build the card with fixture=True")
     parts = ["# Model card: unified risk engine\n"]
     if fixture:
         parts.append("> **FIXTURE RESULTS: generated data, not findings.** Nothing below describes real fraud.\n")
@@ -85,6 +96,14 @@ def build_model_card(out_dir, reports_dir, fixture=False) -> str:
            f"{e['pyg_characterization']:.2f}" if e.get("pyg_fidelity_plus") is not None else "")
         + ". Features are anonymised; explanations describe the model and are not causal."
         if e else "Explanations have not been generated.") + "\n")
+    lat = tables.get("latency")
+    serving = (latency_markdown(lat, tables["latency_meta"]) if lat is not None else "The latency benchmark was not run.")
+    rules = tables.get("sampling_rule")
+    if rules is not None:
+        serving += ("\n\nTest PR-AUC of the served model under each neighbour rule (the headline results use `uniform`, serving uses "
+                    "`last`; `uniform` samples at random, so its number is a single draw):\n\n"
+                    + _table(rules[["rule", "pr_auc"]]))
+    parts.append("## Serving and latency\n\n" + serving + "\n")
     parts.append("## Limitations\n\n- One dataset, one split in time; no claim about other portfolios or later periods.\n"
                  "- The account label is a proxy derived from fraud history, not a ground-truth account-takeover label.\n"
                  "- Anonymised features limit what an explanation can say.\n- Three seeds give a range, not a confidence interval.\n"
@@ -92,12 +111,28 @@ def build_model_card(out_dir, reports_dir, fixture=False) -> str:
     return "\n".join(parts)
 
 
+def splice_block(text: str, name: str, block: str) -> str:
+    start, end = f"<!-- {name}:START -->", f"<!-- {name}:END -->"
+    if start not in text or end not in text:
+        raise ValueError(f"missing the {start} / {end} markers ({name} block)")
+    head, rest = text.split(start, 1)
+    _, tail = rest.split(end, 1)
+    return f"{head}{start}\n{block}\n{end}{tail}"
+
+
 def splice_readme(readme: str, block: str) -> str:
-    if START not in readme or END not in readme:
-        raise ValueError(f"README is missing the {START} / {END} markers (RESULTS block)")
-    head, rest = readme.split(START, 1)
-    _, tail = rest.split(END, 1)
-    return f"{head}{START}\n{block}\n{END}{tail}"
+    return splice_block(readme, "RESULTS", block)
+
+
+def latency_markdown(df: pd.DataFrame, meta: dict) -> str:
+    cols = ["model", "device", "mode", "batch_size", "concurrency", "p50_ms", "p95_ms", "p99_ms", "throughput_rps"]
+    d = df[df["mode"].isin(["inprocess", "http"])][cols]
+    p = meta["parity"]
+    parity = (f"Parity check passed: online and offline scores agree (max absolute difference {p['max_abs_diff']:.1e} over {p['n_rows']} transactions)."
+              if p["checked"] else f"Parity with the offline scores was not checked ({p['reason']}).")
+    return (_table(d.assign(**{c: d[c].astype(float).round(2) for c in cols[5:]})) + f"\n\n{parity} "
+            f"Latencies are per call, milliseconds, on {meta['hardware'].get('gpu') or 'a CPU-only machine'}; the {meta['budget_ms']:g} ms "
+            "budget is illustrative, not a requirement. One machine replaying historical data is not a production claim.")
 
 
 def main(argv=None):
@@ -119,6 +154,9 @@ def main(argv=None):
         path = resolve_path(a.readme)
         path.write_text(splice_readme(path.read_text(encoding="utf-8"),
                                       banner + results_markdown(tables["fraud"], tables["account"])), encoding="utf-8")
+        if "latency" in tables and "<!-- LATENCY:START -->" in path.read_text(encoding="utf-8"):
+            path.write_text(splice_block(path.read_text(encoding="utf-8"), "LATENCY",
+                                         latency_markdown(tables["latency"], tables["latency_meta"])), encoding="utf-8")
         print("updated", path)
 
 
