@@ -1,0 +1,64 @@
+data:
+  dir: data
+  transaction_file: train_transaction.csv
+  identity_file: train_identity.csv   # optional
+seed: 0
+
+splits:
+  train_frac: 0.70
+  val_end_frac: 0.85
+  embargo_days: 7
+  user_fractions: [0.70, 0.15, 0.15]
+
+account:
+  min_transactions: 3
+  fraud_rate_threshold: 0.2
+  min_positives: 30
+
+features:
+  max_v_columns: 100
+  v_max_missing: 0.5
+
+model:
+  hidden: 64
+  heads: 4
+  layers: 2
+  dropout: 0.2
+  conv: gatv2            # gatv2 or sage
+
+train:
+  variant: multitask     # multitask, fraud_only, account_only or no_graph
+  temporal: true         # false = Option A fallback (set by the spike if needed)
+  temporal_strategy: uniform
+  num_neighbors: [15, 10]
+  batch_fraud: 2048
+  batch_account: 1024
+  lr: 1.0e-3
+  weight_decay: 1.0e-5
+  epochs: 20
+  patience: 3
+  focal_alpha: 0.75
+  focal_gamma: 2.0
+  w_fraud: 1.0
+  w_account: 0.5
+  seeds: [0, 1, 2]
+  device: auto           # auto, cpu or cuda
+  max_steps_per_epoch: null
+
+evaluation:
+  alert_budgets: [0.005, 0.01, 0.05]
+  review_cost: 5.0
+  fpr_target: 0.01
+  bootstrap_samples: 1000
+
+drift:
+  retrain_every_days: 28
+  seed: 0
+
+explain:
+  mode: hetero           # hetero or occlusion (set by the spike)
+  n_explained: 10
+  fidelity_sample: 200
+  stability_seeds: 3
+  epochs: 100
+  top_k: 10
