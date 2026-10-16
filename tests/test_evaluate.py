@@ -45,3 +45,13 @@ def test_results_carry_one_config_hash(prep, tmp_path):
     assert {"hgb_user_aggregates", "mean_fraud_score", "multitask"} <= set(account["model"])
     assert fraud["pr_auc"].notna().all()
     assert (tmp_path / "results_weekly.csv").exists() and (tmp_path / "calibration.csv").exists()
+
+
+def test_every_table_carries_the_config_hash_the_fixture_flag_and_the_bootstrap_share(prep, tmp_path):
+    paths = evaluate_all(prep, tmp_path, variants=("fraud_only",), seeds=[0], device="cpu", log=lambda *_: None, fixture=True)
+    for key in ("fraud", "account", "weekly", "calibration"):
+        df = pd.read_csv(paths[key])
+        assert df["config_hash"].nunique() == 1 and df["fixture"].all(), key
+    assert pd.read_csv(paths["fraud"])["pr_auc_boot_kept"].between(0, 1).all()
+    real = evaluate_all(prep, tmp_path / "real", variants=("fraud_only",), seeds=[0], device="cpu", log=lambda *_: None)
+    assert not pd.read_csv(real["fraud"])["fixture"].any()

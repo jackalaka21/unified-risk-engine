@@ -51,7 +51,6 @@ def trained(raw_frames):
     return prep, train_variant(prep, default_spec(prep, "fraud_only", 0), "cpu")
 
 
-@pytest.mark.slow
 def test_explaining_a_transaction_returns_one_importance_per_feature(trained):
     prep, res = trained
     mode = prep.cfg["explain"]["mode"]
@@ -61,7 +60,6 @@ def test_explaining_a_transaction_returns_one_importance_per_feature(trained):
     assert np.isfinite(out["importance"]).all()
 
 
-@pytest.mark.slow
 def test_hetero_mode_reports_edges_pyg_fidelity_and_a_user_explanation(trained):
     prep, res = trained
     if prep.cfg["explain"]["mode"] != "hetero":

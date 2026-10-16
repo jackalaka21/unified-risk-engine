@@ -10,7 +10,7 @@ import numpy as np
 from pipeline.config import PROJECT_ROOT, config_hash, load_config, resolve_path
 from scripts.train import load_checkpoint
 from serving.bundle import save_bundle
-from serving.graph_index import GraphIndex
+from serving.graph_index import ENTITIES, GraphIndex
 from serving.scorer import payload_of, raw_kinds_of
 
 
@@ -38,8 +38,9 @@ def export_artifacts(prepared, checkpoint, out_dir, history_until="test_start", 
             "history_until": history_until, "fixture": bool(fixture),
             "exported_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
     samples = [payload_of(prepared.df, i) for i in range(upto, min(upto + n_samples, len(prepared.df)))]
+    entities = [nt for nt in ENTITIES if len(prepared.entity_index[nt]) > 0]       # types that had nodes (and edges) in training
     return save_bundle(out_dir, model_cfg, model, heads, prepared.transformer, index, raw_kinds_of(prepared.df),
-                       prepared.hist.columns, meta, samples)
+                       prepared.hist.columns, meta, samples, entities=entities)
 
 
 def main(argv=None):

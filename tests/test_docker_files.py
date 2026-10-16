@@ -22,3 +22,10 @@ def test_serving_requirements_are_minimal():
         assert needed in req
     for banned in ("pytest", "jupyter", "ipykernel", "scikit-learn", "matplotlib", "cu130"):
         assert banned not in req
+
+
+def test_the_container_does_not_run_as_root():
+    lines = [l.strip() for l in read("Dockerfile").splitlines()]
+    users = [l for l in lines if l.startswith("USER ")]
+    assert users and users[-1] not in ("USER root", "USER 0")
+    assert lines.index(users[-1]) > max(i for i, l in enumerate(lines) if l.startswith("COPY "))

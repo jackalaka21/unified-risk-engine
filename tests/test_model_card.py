@@ -3,7 +3,7 @@ import json
 import pandas as pd
 import pytest
 
-from scripts.make_model_card import build_model_card, check_single_config, results_markdown, splice_readme
+from scripts.make_model_card import build_model_card, results_markdown, splice_readme
 
 
 def write_tables(tmp_path, hash_a="aaaa", hash_b="aaaa"):
@@ -11,7 +11,7 @@ def write_tables(tmp_path, hash_a="aaaa", hash_b="aaaa"):
     out.mkdir(), reports.mkdir()
     pd.DataFrame({"model": ["history_tabular", "history_tabular", "multitask", "multitask"], "seed": [0, 1, 0, 1],
                   "config_hash": [hash_a, hash_a, hash_b, hash_b], "n_test": 1000, "prevalence": 0.03,
-                  "pr_auc": [0.50, 0.52, 0.5678, 0.5722], "pr_auc_lo": 0.4, "pr_auc_hi": 0.7, "roc_auc": 0.9,
+                  "pr_auc": [0.50, 0.52, 0.5678, 0.5722], "pr_auc_lo": 0.4, "pr_auc_hi": 0.7, "pr_auc_boot_kept": 0.97, "roc_auc": 0.9,
                   "recall_at_fpr": 0.4, "realised_fpr": 0.012, "recall@0.005": 0.2, "recall@0.01": 0.31, "recall@0.05": 0.55,
                   "amount_recall@0.005": 0.22, "amount_recall@0.01": 0.35, "amount_recall@0.05": 0.6, "cost": 900.0,
                   "cost_flag_none": 1500.0, "cost_flag_all": 4000.0, "brier": 0.02, "ece": 0.01}).to_csv(out / "results_fraud.csv", index=False)
@@ -66,7 +66,7 @@ def test_results_markdown_has_one_row_per_model(tmp_path):
     assert md.count("| multitask |") == 2 and md.count("| history_tabular |") == 1  # fraud table + account table
 
 
-from scripts.make_model_card import latency_markdown, splice_block
+from scripts.make_model_card import splice_block
 
 
 def write_latency(out, config_hash="aaaa", parity=True):
@@ -144,3 +144,39 @@ def test_card_does_not_claim_the_graph_model_gets_history_features(tmp_path):
     card = build_model_card(out, reports)
     assert "same history features as the graph model" not in card
     assert "message passing" in card
+
+
+def test_weekly_and_calibration_tables_are_part_of_the_config_hash_check(tmp_path):
+    out, reports = write_tables(tmp_path)
+    pd.DataFrame({"model": "m", "seed": 0, "week": [0], "pr_auc": [0.5], "config_hash": "zzzz"}).to_csv(out / "results_weekly.csv", index=False)
+    with pytest.raises(ValueError, match="mixed config hashes"):
+        build_model_card(out, reports)
+    pd.DataFrame({"model": "m", "seed": 0, "week": [0], "pr_auc": [0.5]}).to_csv(out / "results_weekly.csv", index=False)
+    with pytest.raises(ValueError, match="config_hash"):
+        build_model_card(out, reports)
+
+
+def test_tables_flagged_as_fixture_cannot_enter_a_real_card(tmp_path):
+    out, reports = write_tables(tmp_path)
+    fraud = pd.read_csv(out / "results_fraud.csv").assign(fixture=True)
+    fraud.to_csv(out / "results_fraud.csv", index=False)
+    with pytest.raises(ValueError, match="fixture"):
+        build_model_card(out, reports, fixture=False)
+    assert "FIXTURE RESULTS" in build_model_card(out, reports, fixture=True)
+
+
+def test_explanation_metrics_flagged_as_fixture_cannot_enter_a_real_card(tmp_path):
+    out, reports = write_tables(tmp_path)
+    meta = json.loads((reports / "explain_metrics.json").read_text())
+    meta["fixture"] = True
+    (reports / "explain_metrics.json").write_text(json.dumps(meta))
+    with pytest.raises(ValueError, match="fixture"):
+        build_model_card(out, reports, fixture=False)
+
+
+def test_the_card_types_no_dataset_numbers_and_states_every_known_limit(tmp_path):
+    out, reports = write_tables(tmp_path)
+    card = build_model_card(out, reports)
+    assert "590k" not in card and "six months" not in card
+    assert "label-based history" in card.lower() and "real data" in card.lower()
+    assert "bootstrap resamples" in card.lower() and "0.97" in card

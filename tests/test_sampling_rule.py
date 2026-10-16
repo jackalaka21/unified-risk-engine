@@ -1,4 +1,3 @@
-import pandas as pd
 
 from scripts.sampling_rule import sampling_rule_table
 from scripts.train import default_spec, train_variant

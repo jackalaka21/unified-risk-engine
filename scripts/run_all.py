@@ -14,6 +14,9 @@ from scripts.make_model_card import build_model_card
 from scripts.train import default_spec, train_variant
 
 
+CHECKPOINT_NAME = "multitask_seed0.pt"          # the checkpoint the explanations, the export and the benchmark read
+
+
 def run_all(cfg, out_dir, reports_dir, models_dir, df=None,
             variants=("multitask", "fraud_only", "account_only", "no_graph"), seeds=None,
             drift_kinds=("history_tabular", "gnn_fraud_only"), device=None, fixture=False, log=print):
@@ -23,16 +26,16 @@ def run_all(cfg, out_dir, reports_dir, models_dir, df=None,
     if fixture:
         log("FIXTURE RUN: generated data, results are not findings")
     prepared = prepare(cfg, df=df)
-    paths = evaluate_all(prepared, out_dir, variants=variants, seeds=seeds, device=device, log=log)
+    paths = evaluate_all(prepared, out_dir, variants=variants, seeds=seeds, device=device, log=log, fixture=fixture)
     h = config_hash(cfg)
     drift = drift_study(prepared, seed=cfg["drift"]["seed"], kinds=drift_kinds, device=device, log=log)
     paths["drift_weekly"], paths["drift_summary"] = out_dir / "drift_weekly.csv", out_dir / "drift_summary.csv"
-    drift.assign(config_hash=h).to_csv(paths["drift_weekly"], index=False)
-    summarize_drift(drift).assign(config_hash=h).to_csv(paths["drift_summary"], index=False)
-    ckpt = models_dir / "multitask_seed0.pt"  # one extra run so the explanations have a checkpoint to load
+    drift.assign(config_hash=h, fixture=fixture).to_csv(paths["drift_weekly"], index=False)
+    summarize_drift(drift).assign(config_hash=h, fixture=fixture).to_csv(paths["drift_summary"], index=False)
+    ckpt = models_dir / CHECKPOINT_NAME  # one extra run so the explanations have a checkpoint to load
     train_variant(prepared, default_spec(prepared, "multitask", seeds[0]), device, ckpt)
     metrics = explain_report(prepared, ckpt, reports_dir, device)
-    metrics.update(config_hash=h, mode=cfg["explain"]["mode"])
+    metrics.update(config_hash=h, mode=cfg["explain"]["mode"], fixture=fixture)
     (reports_dir / "explain_metrics.json").write_text(json.dumps(metrics, indent=2), encoding="utf-8")
     paths["explanations"] = reports_dir / "explanations.md"
     paths["card"] = out_dir / "MODEL_CARD.md"

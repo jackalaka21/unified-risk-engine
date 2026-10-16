@@ -38,3 +38,10 @@ def test_workflow_builds_and_smoke_tests_the_container():
     steps = " ".join(str(s.get("run", "")) for s in wf["jobs"]["container"]["steps"])
     assert "docker build" in steps and "scripts.smoke_service" in steps and "export_artifacts --fixture" in steps
     assert wf["jobs"]["container"]["needs"] == "test"
+
+
+def test_ci_runs_on_every_pushed_branch_and_on_pull_requests():
+    wf = yaml.safe_load((PROJECT_ROOT / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8"))
+    triggers = wf.get("on", wf.get(True))
+    assert "pull_request" in triggers and "push" in triggers
+    assert not (triggers["push"] or {}).get("branches")            # no branch filter: feature branches are tested too

@@ -10,7 +10,7 @@ from pipeline.config import load_config, resolve_device, resolve_path
 from pipeline.metrics import weekly_table
 from pipeline.splits import DAY, period_of
 from scripts.baseline import _history_matrix, fit_hgb
-from scripts.train import RunSpec, default_spec, predict_scores, train_variant
+from scripts.train import RunSpec, predict_scores, train_variant
 
 
 def retrain_cutoffs(periods, max_time, every_days):

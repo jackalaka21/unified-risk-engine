@@ -19,6 +19,9 @@ def load_tables(out_dir, reports_dir) -> dict:
     tables = {"fraud": pd.read_csv(out_dir / "results_fraud.csv"), "account": pd.read_csv(out_dir / "results_account.csv")}
     if (out_dir / "drift_summary.csv").exists():
         tables["drift_summary"] = pd.read_csv(out_dir / "drift_summary.csv")
+    for name, file in (("weekly", "results_weekly.csv"), ("calibration", "calibration.csv")):
+        if (out_dir / file).exists():
+            tables[name] = pd.read_csv(out_dir / file)
     if (out_dir / "latency.csv").exists():
         tables["latency"] = pd.read_csv(out_dir / "latency.csv")
         tables["latency_meta"] = json.loads((out_dir / "latency_meta.json").read_text(encoding="utf-8"))
@@ -32,9 +35,12 @@ def load_tables(out_dir, reports_dir) -> dict:
 def check_single_config(tables: dict) -> str:
     hashes = set()
     for name, t in tables.items():
+        if name == "latency":                                # this table carries its hash in latency_meta
+            continue
         if isinstance(t, pd.DataFrame):
-            if "config_hash" in t:                           # the latency table carries its hash in latency_meta
-                hashes |= set(t["config_hash"].unique())
+            if "config_hash" not in t:
+                raise ValueError(f"table {name} has no config_hash column: re-run the step that wrote it")
+            hashes |= set(t["config_hash"].unique())
         else:
             hashes.add(t["config_hash"])
     if len(hashes) != 1:
@@ -76,8 +82,12 @@ def build_model_card(out_dir, reports_dir, fixture=False) -> str:
     tables = load_tables(out_dir, reports_dir)
     cfg_hash = check_single_config(tables)
     fraud = tables["fraud"]
-    if not fixture and tables.get("latency_meta", {}).get("fixture"):
-        raise ValueError("the latency results are fixture results: re-run the benchmark on real data or build the card with fixture=True")
+    flagged = [name for name, t in tables.items()
+               if (bool(t["fixture"].any()) if isinstance(t, pd.DataFrame) and "fixture" in t else
+                   (isinstance(t, dict) and bool(t.get("fixture"))))]
+    if flagged and not fixture:
+        raise ValueError(f"these results are fixture results (generated data): {flagged}; re-run on real data or build the "
+                         "card with fixture=True")
     parts = ["# Model card: unified risk engine\n"]
     if fixture:
         parts.append("> **FIXTURE RESULTS: generated data, not findings.** Nothing below describes real fraud.\n")
@@ -87,14 +97,18 @@ def build_model_card(out_dir, reports_dir, fixture=False) -> str:
                  "to study whether a temporal graph model adds value over strong tabular baselines. Not for production decisions, "
                  "credit, or any decision about a person.\n")
     parts.append("## Data\n\nIEEE-CIS Fraud Detection (Kaggle; Vesta Corporation): card-not-present e-commerce transactions with "
-                 "anonymised features, about 590k training transactions over about six months. Users are an approximation built "
-                 "from card and address fields, so \"user\" is a proxy for a real account holder.\n")
+                 "anonymised features, Users are an approximation built "
+                 "from card and address fields, so \"user\" is a proxy for a real account holder. Test-set size and prevalence "
+                 "are given above.\n")
     parts.append("## Leakage controls\n\n- Chronological split: train, validation, test, separated by an embargo so late labels cannot cross a boundary.\n"
                  "- Users are split into disjoint train, validation and test groups; the account label uses history up to the end of training only.\n"
                  "- Feature statistics are fitted on the train period only; history features are strictly causal.\n"
                  "- Neighbour sampling only reaches transactions that arrived no later than the seed (equal timestamps are ordered by transaction ID).\n"
                  "- The history-aware baseline gets hand-built history features (counts, amounts and recency per user, email domain and device, from strictly earlier transactions); the graph model gets the same per-transaction features and has to learn history through message passing.\n")
     parts.append("## Results\n\n" + results_markdown(fraud, tables["account"]) + "\n")
+    if "pr_auc_boot_kept" in fraud:
+        parts.append(f"Bootstrap resamples without both classes are dropped; at least {fraud['pr_auc_boot_kept'].min():.2f} of the "
+                     "resamples were kept for every row.\n")
     parts.append("Cost uses an assumed review cost per false alert; compare it with `cost_flag_none`, the cost of flagging nothing. "
                  "Differences smaller than the bootstrap interval or the range over seeds are not evidence of a better model.\n")
     parts.append("## Drift\n\n" + (_table(tables["drift_summary"].drop(columns=["config_hash"]))
@@ -118,6 +132,9 @@ def build_model_card(out_dir, reports_dir, fixture=False) -> str:
     parts.append("## Limitations\n\n- One dataset, one split in time; no claim about other portfolios or later periods.\n"
                  "- The account label is a proxy derived from fraud history, not a ground-truth account-takeover label.\n"
                  "- Anonymised features limit what an explanation can say.\n- Three seeds give a range, not a confidence interval.\n"
+                 "- Label-based history features (a user's past confirmed frauds) are excluded from the baseline, so a production "
+                 "system could do better.\n- Nothing here is measured on real data unless the Kaggle files were supplied: check the "
+                 "banner at the top of this card.\n"
                  "- The review cost is an assumption.\n- Any explanation of *why* a model wins is a hypothesis unless an ablation tested it.\n")
     return "\n".join(parts)
 
@@ -152,7 +169,7 @@ def main(argv=None):
     p.add_argument("--reports", default="reports")
     p.add_argument("--card", default="docs/MODEL_CARD.md")
     p.add_argument("--readme", default=None, help="README path to update; omit to skip")
-    p.add_argument("--fixture", action="store_true")
+    p.add_argument("--fixture", action="store_true", help="the tables come from generated data")
     a = p.parse_args(argv)
     card = build_model_card(resolve_path(a.out), resolve_path(a.reports), fixture=a.fixture)
     card_path = resolve_path(a.card)

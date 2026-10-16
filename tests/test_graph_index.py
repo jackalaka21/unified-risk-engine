@@ -78,3 +78,13 @@ def test_history_for_unseen_and_missing_entities():
     h = ix.history(("zzz", None, None), 50)
     assert h["user_n_prior"] == 0 and np.isnan(h["user_amt_mean"]) and h["user_distinct_devices"] == 0
     assert np.isnan(h["email_n_prior"]) and np.isnan(h["device_n_prior"])
+
+
+def test_pickling_does_not_carry_unused_capacity():
+    import pickle
+
+    ix = idx_with([(1, 1, "u", None, None)])
+    again = pickle.loads(pickle.dumps(ix))
+    assert again._x.shape[0] == 1
+    again.add(2, 1, ("u", None, None), Z)                            # growth still works after a round trip
+    assert len(again) == 2 and again.lookup("user", "u", 9, 3) == [0, 1]

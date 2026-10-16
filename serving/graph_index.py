@@ -25,7 +25,11 @@ PREFIX = {"user": "user", "email_domain": "email", "device": "device"}   # histo
 BASE_NAMES = ["n_prior", "n_1d", "n_7d", "amt_mean", "amt_std", "secs_since_prev"]
 
 
-class OutOfOrderError(ValueError):
+class RequestError(ValueError):
+    """The request itself is unusable (a client error), as opposed to a bug in the service."""
+
+
+class OutOfOrderError(RequestError):
     """A request is older than a transaction already in the index."""
 
 
@@ -81,6 +85,11 @@ class GraphIndex:
     def __len__(self) -> int:
         return len(self.times)
 
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state["_x"] = self._x[:len(self.times)].copy()              # do not pickle the unused part of the doubled capacity
+        return state
+
     def x_of(self, row: int) -> np.ndarray:
         return self._x[row]
 
@@ -90,7 +99,7 @@ class GraphIndex:
         keys = _clean(keys)
         row = len(self.times)
         if row >= len(self._x):
-            self._x = np.concatenate([self._x, np.zeros_like(self._x)])
+            self._x = np.concatenate([self._x, np.zeros((max(len(self._x), 16), self.n_features), np.float32)])
         self._x[row] = x
         for e, key in zip(ENTITIES, keys):
             if key is None:

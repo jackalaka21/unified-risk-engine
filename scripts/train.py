@@ -224,7 +224,7 @@ def train_variant(prepared, spec: RunSpec, device="cpu", checkpoint_path=None) -
 
 
 def load_checkpoint(path, prepared, device):
-    ckpt = torch.load(path, map_location=device, weights_only=False)
+    ckpt = torch.load(path, map_location=device, weights_only=True)
     model, heads = build_modules(prepared, device)
     warm_up(model, heads, prepared, device)
     model.load_state_dict(ckpt["model"])

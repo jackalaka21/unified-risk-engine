@@ -10,7 +10,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
-from serving.graph_index import OutOfOrderError
+from serving.graph_index import OutOfOrderError, RequestError
 
 
 class Transaction(BaseModel):
@@ -55,7 +55,7 @@ def create_app(scorer=None, artifacts=None) -> FastAPI:
                 return s.score_batch(payloads), s.version
         except OutOfOrderError as e:
             raise HTTPException(409, str(e))
-        except ValueError as e:
+        except RequestError as e:                      # anything else is a bug in the service and stays a 500
             raise HTTPException(422, str(e))
 
     @app.get("/health")

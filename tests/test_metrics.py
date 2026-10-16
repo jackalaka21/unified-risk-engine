@@ -1,5 +1,4 @@
 import numpy as np
-import pandas as pd
 import pytest
 
 from pipeline.metrics import (alert_budget, bootstrap_metric, calibration, expected_cost, pr_auc,
@@ -78,3 +77,19 @@ def test_alert_budget_with_tied_scores_does_not_depend_on_row_order():
     b = alert_budget(y[::-1], s, amount[::-1], 0.2)            # same data, reversed row order
     assert a["recall"] == pytest.approx(0.2) and a["recall"] == pytest.approx(b["recall"])
     assert a["precision"] == pytest.approx(0.2) and a["amount_recall"] == pytest.approx(b["amount_recall"])
+
+
+def test_expected_cost_can_choose_to_flag_everything():
+    y = np.array([1, 0, 1, 0, 1, 0])
+    s = np.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6])
+    amount = np.full(6, 1000.0)
+    c = expected_cost(y, s, amount, y, s, amount, review_cost=0.001)      # reviewing is nearly free: flag all
+    assert c["cost"] == pytest.approx(c["cost_flag_all"])
+
+
+def test_bootstrap_can_report_the_share_of_resamples_it_kept():
+    y = np.array([1] + [0] * 19)
+    s = np.random.default_rng(0).random(20)
+    lo, hi, kept = bootstrap_metric(pr_auc, y, s, n_boot=300, seed=0, return_kept=True)
+    assert 0 < kept < 1                                                  # resamples without a positive are dropped
+    assert bootstrap_metric(pr_auc, y, s, n_boot=300, seed=0) == (lo, hi)

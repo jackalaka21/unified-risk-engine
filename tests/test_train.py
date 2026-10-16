@@ -77,3 +77,11 @@ def test_empty_seed_set_gives_empty_predictions(prep):
     spec = default_spec(prep, "fraud_only", 0)
     res = train_variant(prep, spec, "cpu")
     assert predict_scores(prep, res.model, res.heads, "fraud", np.array([], dtype=int), "cpu").shape == (0,)
+
+
+def test_checkpoints_contain_only_tensors_and_primitives(prep, tmp_path):
+    import torch
+
+    train_variant(prep, default_spec(prep, "fraud_only", 0), "cpu", tmp_path / "m.pt")
+    ckpt = torch.load(tmp_path / "m.pt", map_location="cpu", weights_only=True)      # raises if anything else is pickled
+    assert {"model", "heads", "variant", "seed", "best_epoch", "config_hash"} <= set(ckpt)

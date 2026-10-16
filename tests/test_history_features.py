@@ -1,6 +1,5 @@
 import numpy as np
 import pandas as pd
-import pytest
 
 from pipeline.data_loading import finalize
 from pipeline.history_features import history_features

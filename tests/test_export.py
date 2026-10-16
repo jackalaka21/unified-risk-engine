@@ -54,3 +54,29 @@ def test_a_checkpoint_without_a_fraud_head_is_refused(prep, exported):
     d, _ = exported
     with pytest.raises(ValueError, match="fraud"):
         export_artifacts(prep, d / "acct.pt", d / "bad", fixture=True)
+
+
+def test_a_tampered_bundle_is_refused_before_it_is_unpickled(exported, tmp_path):
+    import shutil
+
+    d, paths = exported
+    copy = tmp_path / "tampered"
+    shutil.copytree(d / "artifacts", copy)
+    with open(copy / "bundle.pkl", "ab") as f:
+        f.write(b"x")
+    with pytest.raises(ValueError, match="checksum"):
+        load_bundle(copy)
+    shutil.copy(d / "artifacts" / "bundle.pkl", copy / "bundle.pkl")
+    assert load_bundle(copy)                                       # the untouched copy still loads
+
+
+def test_the_bundle_records_which_entity_types_the_model_trained_on(tmp_path):
+    from pipeline.config import load_config
+    from pipeline.prepare import prepare
+    from tests.fixtures import fixture_overrides, make_fixture
+
+    prep = prepare(load_config(overrides=fixture_overrides()), df=make_fixture()[0])        # no identity file: no devices
+    train_variant(prep, default_spec(prep, "fraud_only", 0), "cpu", tmp_path / "m.pt")
+    paths = export_artifacts(prep, tmp_path / "m.pt", tmp_path / "a", fixture=True)
+    assert json.loads(paths["meta"].read_text())["entity_types"] == ["user", "email_domain"]
+    assert load_bundle(tmp_path / "a").entities == ("user", "email_domain")

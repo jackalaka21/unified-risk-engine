@@ -3,7 +3,7 @@ import pandas as pd
 import pytest
 
 from pipeline.data_loading import finalize
-from pipeline.splits import (DAY, account_table, check_positives, compute_periods, fraud_masks,
+from pipeline.splits import (account_table, check_positives, compute_periods, fraud_masks,
                              period_of, split_users)
 
 

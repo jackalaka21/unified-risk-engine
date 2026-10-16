@@ -24,6 +24,7 @@ from scripts.train import load_checkpoint, predict_scores
 from serving.graph_index import GraphIndex
 from serving.scorer import OnlineScorer, TabularOnlineScorer, payload_of, raw_kinds_of
 
+DEFAULT_CHECKPOINT = "models/multitask_seed0.pt"      # what scripts.run_all writes; the fraud head is the one served
 COMPONENTS = ("feature_transform", "neighbour_lookup", "model_forward", "index_update")
 
 
@@ -234,7 +235,7 @@ def main(argv=None):
 
     p = argparse.ArgumentParser(description="Benchmark online scoring latency.")
     p.add_argument("--config", default=None)
-    p.add_argument("--checkpoint", default="models/fraud_only_seed0.pt")
+    p.add_argument("--checkpoint", default=DEFAULT_CHECKPOINT)
     p.add_argument("--out", default="plots")
     p.add_argument("--n-requests", type=int, default=2000)
     p.add_argument("--budget-ms", type=float, default=100.0)

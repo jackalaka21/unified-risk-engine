@@ -60,7 +60,8 @@ def _cost(thr, y, s, amount, review_cost) -> float:
 def expected_cost(y_val, s_val, a_val, y_test, s_test, a_test, review_cost) -> dict:
     y_val, s_val, a_val = np.asarray(y_val), np.asarray(s_val), np.asarray(a_val, dtype=float)
     y_test, s_test, a_test = np.asarray(y_test), np.asarray(s_test), np.asarray(a_test, dtype=float)
-    candidates = np.append(np.unique(np.quantile(s_val, np.linspace(0, 1, 201))), s_val.max() + 1.0)
+    candidates = np.concatenate([np.unique(np.quantile(s_val, np.linspace(0, 1, 201))),
+                                 [s_val.min() - 1.0, s_val.max() + 1.0]])      # below the minimum flags all, above the maximum none
     costs = [_cost(c, y_val, s_val, a_val, review_cost) for c in candidates]
     thr = float(candidates[int(np.argmin(costs))])
     return {"threshold": thr, "cost": _cost(thr, y_test, s_test, a_test, review_cost),
@@ -83,7 +84,9 @@ def calibration(y, p, bins=10):
     return {"brier": float(np.mean((p - y) ** 2)), "ece": float(ece)}, table
 
 
-def bootstrap_metric(fn, y, s, n_boot=1000, seed=0, alpha=0.05):
+def bootstrap_metric(fn, y, s, n_boot=1000, seed=0, alpha=0.05, return_kept=False):
+    """Percentile bootstrap interval. Resamples where `fn` is undefined (no positives) are dropped; with
+    `return_kept=True` the share that was kept is returned as a third value."""
     y, s = np.asarray(y), np.asarray(s)
     rng = np.random.default_rng(seed)
     values = []
@@ -92,9 +95,9 @@ def bootstrap_metric(fn, y, s, n_boot=1000, seed=0, alpha=0.05):
         v = fn(y[i], s[i])
         if not np.isnan(v):
             values.append(v)
-    if not values:
-        return NAN, NAN
-    return float(np.quantile(values, alpha / 2)), float(np.quantile(values, 1 - alpha / 2))
+    kept = len(values) / n_boot if n_boot else NAN
+    interval = (NAN, NAN) if not values else (float(np.quantile(values, alpha / 2)), float(np.quantile(values, 1 - alpha / 2)))
+    return (*interval, kept) if return_kept else interval
 
 
 def weekly_table(times, y, s, start, n_boot=0, seed=0) -> pd.DataFrame:

@@ -1,5 +1,4 @@
 import numpy as np
-import pandas as pd
 import pytest
 import torch
 
@@ -10,9 +9,10 @@ from pipeline.prepare import prepare
 @pytest.fixture(scope="module")
 def prep(raw_frames):
     from pipeline.config import load_config
-    from tests.fixtures import fixture_overrides
+    from tests.fixtures import fixture_overrides, make_fixture
 
-    return prepare(load_config(overrides=fixture_overrides()), df=raw_frames[0])
+    tx, identity = make_fixture()                                   # merged, so device nodes and edges really exist
+    return prepare(load_config(overrides=fixture_overrides()), df=tx.merge(identity, on="TransactionID", how="left"))
 
 
 def test_node_counts(prep):
@@ -51,7 +51,10 @@ def test_rows_without_entities_have_no_edges(prep):
     no_email = set(np.flatnonzero(df["email"].isna().to_numpy()))
     assert not no_email & set(ei[0].tolist())
     dv = g["transaction", "uses_device", "device"].edge_index
-    assert dv.shape[1] == df["device"].notna().sum() and df["device"].isna().any()
+    assert df["device"].notna().any() and df["device"].isna().any()      # a mix of rows with and without a device
+    assert dv.shape[1] == df["device"].notna().sum()
+    no_device = set(np.flatnonzero(df["device"].isna().to_numpy()))
+    assert not no_device & set(dv[0].tolist())
 
 
 def test_every_row_has_a_user_edge_and_reverse_edges_mirror(prep):

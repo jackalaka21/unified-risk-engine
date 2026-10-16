@@ -26,10 +26,11 @@ def evaluate_fraud(model, seed, p_val, p_test, prepared):
     cfg = prepared.cfg
     e, a = cfg["evaluation"], _fraud_arrays(prepared)
     y_val, y_test = a["y_val"], a["y_test"]
-    lo, hi = bootstrap_metric(pr_auc, y_test, p_test, e["bootstrap_samples"], seed)
+    lo, hi, kept = bootstrap_metric(pr_auc, y_test, p_test, e["bootstrap_samples"], seed, return_kept=True)
     row = {"model": model, "seed": seed, "head": "fraud", "config_hash": config_hash(cfg),
            "n_test": int(len(y_test)), "prevalence": float(y_test.mean()),
-           "pr_auc": pr_auc(y_test, p_test), "pr_auc_lo": lo, "pr_auc_hi": hi, "roc_auc": roc_auc(y_test, p_test)}
+           "pr_auc": pr_auc(y_test, p_test), "pr_auc_lo": lo, "pr_auc_hi": hi, "pr_auc_boot_kept": kept,
+           "roc_auc": roc_auc(y_test, p_test)}
     r = recall_at_fpr(y_val, p_val, y_test, p_test, e["fpr_target"])
     row.update(recall_at_fpr=r["recall"], realised_fpr=r["realised_fpr"])
     for b in e["alert_budgets"]:
@@ -41,10 +42,10 @@ def evaluate_fraud(model, seed, p_val, p_test, prepared):
     cal, table = calibration(y_test, p_test)
     row.update(cal)
     weekly = weekly_table(a["t_test"], y_test, p_test, start=prepared.periods.test_start)
-    weekly.insert(0, "model", model)
-    weekly.insert(1, "seed", seed)
-    table.insert(0, "model", model)
-    table.insert(1, "seed", seed)
+    for frame in (weekly, table):
+        frame.insert(0, "model", model)
+        frame.insert(1, "seed", seed)
+        frame["config_hash"] = row["config_hash"]
     return row, weekly, table
 
 
@@ -57,7 +58,7 @@ def evaluate_account(model, seed, p_val, p_test, prepared):
 
 
 def evaluate_all(prepared, out_dir, variants=("multitask", "fraud_only", "account_only", "no_graph"),
-                 seeds=None, device=None, log=print) -> dict:
+                 seeds=None, device=None, log=print, fixture=False) -> dict:
     cfg = prepared.cfg
     seeds = cfg["train"]["seeds"] if seeds is None else seeds
     device = resolve_device(device or cfg["train"]["device"])
@@ -95,10 +96,10 @@ def evaluate_all(prepared, out_dir, variants=("multitask", "fraud_only", "accoun
     out_dir.mkdir(parents=True, exist_ok=True)
     paths = {"fraud": out_dir / "results_fraud.csv", "account": out_dir / "results_account.csv",
              "weekly": out_dir / "results_weekly.csv", "calibration": out_dir / "calibration.csv"}
-    pd.DataFrame(fraud_rows).to_csv(paths["fraud"], index=False)
-    pd.DataFrame(account_rows).to_csv(paths["account"], index=False)
-    pd.concat(weekly, ignore_index=True).to_csv(paths["weekly"], index=False)
-    pd.concat(cals, ignore_index=True).to_csv(paths["calibration"], index=False)
+    pd.DataFrame(fraud_rows).assign(fixture=fixture).to_csv(paths["fraud"], index=False)
+    pd.DataFrame(account_rows).assign(fixture=fixture).to_csv(paths["account"], index=False)
+    pd.concat(weekly, ignore_index=True).assign(fixture=fixture).to_csv(paths["weekly"], index=False)
+    pd.concat(cals, ignore_index=True).assign(fixture=fixture).to_csv(paths["calibration"], index=False)
     return paths
 
 

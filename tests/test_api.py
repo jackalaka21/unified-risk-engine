@@ -97,3 +97,11 @@ def test_non_finite_numbers_get_422_and_leave_the_service_healthy(client_and_pay
     assert r.status_code == 422
     assert client.get("/health").json()["indexed_transactions"] == n0
     assert client.post("/score", json=payloads[0]).status_code == 200
+
+
+@pytest.mark.parametrize("extra", [{"card4": {"a": 1}}, {"card4": ["x"]}, {"card1": "abc"}])
+def test_unusable_optional_fields_get_422_not_500(client_and_payloads, extra):
+    client, payloads = client_and_payloads
+    n0 = client.get("/health").json()["indexed_transactions"]
+    assert client.post("/score", json={**payloads[0], **extra}).status_code == 422
+    assert client.get("/health").json()["indexed_transactions"] == n0

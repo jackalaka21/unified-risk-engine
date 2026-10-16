@@ -3,7 +3,7 @@ import pandas as pd
 import pytest
 
 from scripts.train import make_loader, predict_scores
-from serving.graph_index import GraphIndex, OutOfOrderError, keys_from_frame
+from serving.graph_index import GraphIndex, OutOfOrderError
 from serving.scorer import TabularOnlineScorer, payload_of, raw_kinds_of
 from tests.serving_helpers import HAS_TEMPORAL, last_rule_prepared, make_scorer
 
@@ -110,7 +110,7 @@ def test_missing_required_fields_are_named(prep):
     scorer = make_scorer(prep, 100)
     with pytest.raises(ValueError, match="TransactionDT"):
         scorer.score({"TransactionAmt": 5.0})
-    with pytest.raises(ValueError, match="numbers"):
+    with pytest.raises(ValueError, match="numeric"):
         scorer.score({"TransactionDT": "soon", "TransactionAmt": 5.0})
 
 
@@ -165,3 +165,35 @@ def test_a_missing_value_in_one_row_does_not_change_the_other_rows_in_a_batch(pr
     mixed = make_scorer(prep, p).score_batch([a, b])[0]
     alone = make_scorer(prep, p).score(a)
     assert mixed == pytest.approx(alone, abs=1e-6)
+
+
+def test_bad_field_values_are_client_errors(prep):
+    from serving.graph_index import RequestError
+
+    scorer = make_scorer(prep, len(prep.df) // 2)
+    base = payload_of(prep.df, len(prep.df) // 2)
+    n = len(scorer.index)
+    for bad in ({"card1": "abc"}, {"card4": {"a": 1}}, {"card4": ["x"]}, {"TransactionAmt": "lots"}):
+        with pytest.raises(RequestError):
+            scorer.score({**base, **bad})
+    assert len(scorer.index) == n
+
+
+def test_entity_types_the_model_never_trained_on_are_ignored(prep):
+    p = len(prep.df) // 2
+    rows = [i for i in range(p, len(prep.df)) if prep.df["device"].iat[i] is not None and prep.df["device"].notna().iat[i]]
+    pay = payload_of(prep.df, rows[0])
+    with_device = make_scorer(prep, p, entities=("user", "email_domain")).score(pay)
+    without = make_scorer(prep, p, entities=("user", "email_domain")).score({**pay, "DeviceInfo": None})
+    assert with_device == pytest.approx(without, abs=1e-6)
+    full = make_scorer(prep, p).score(pay)
+    assert full != pytest.approx(with_device, abs=1e-6)               # the device edge matters when the model has devices
+
+
+def test_a_clamped_late_request_is_scored_as_if_it_arrived_now(prep):
+    p = len(prep.df) // 2
+    late = payload_of(prep.df, 0)
+    clamped = make_scorer(prep, p, late="clamp")
+    now = int(clamped.index.last_time)
+    as_now = make_scorer(prep, p, late="clamp").score({**late, "TransactionDT": now})
+    assert clamped.score(late) == pytest.approx(as_now, abs=1e-6)       # hour and day-of-week features follow the clamp too

@@ -19,3 +19,9 @@ def test_run_all_produces_every_artifact_with_one_config_hash(tmp_path):
     assert len(hashes) == 1
     assert "FIXTURE RESULTS" in paths["card"].read_text(encoding="utf-8")
     assert (tmp_path / "models" / "multitask_seed0.pt").exists()
+
+
+def test_benchmark_default_checkpoint_is_the_one_run_all_produces():
+    from scripts import benchmark_latency, run_all
+
+    assert benchmark_latency.DEFAULT_CHECKPOINT == f"models/{run_all.CHECKPOINT_NAME}"

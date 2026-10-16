@@ -8,7 +8,7 @@ import pandas as pd
 import torch
 
 from pipeline.data_loading import finalize
-from serving.graph_index import EDGES, ENTITIES, OutOfOrderError, keys_from_frame
+from serving.graph_index import EDGES, ENTITIES, OutOfOrderError, RequestError, keys_from_frame
 
 REQUIRED = ("TransactionDT", "TransactionAmt")
 DERIVED = ("user", "email", "device")
@@ -49,23 +49,28 @@ def build_frame(payloads, kinds) -> pd.DataFrame:
     for p in payloads:
         missing = [c for c in REQUIRED if p.get(c) is None]
         if missing:
-            raise ValueError(f"missing required field(s): {missing}")
+            raise RequestError(f"missing required field(s): {missing}")
+        for c in kinds:
+            if isinstance(p.get(c), (dict, list, tuple, set)):
+                raise RequestError(f"field {c} must be a single value, not a collection")
     frame = pd.DataFrame({c: [p.get(c) for p in payloads] for c in kinds})
     for c, kind in kinds.items():
         if kind == "object":
             frame[c] = frame[c].astype(object)
         else:
             s = pd.to_numeric(frame[c], errors="coerce")
+            if (s.isna() & frame[c].notna()).any():
+                raise RequestError(f"field {c} must be numeric")
             if kind == "int":
                 # nullable integers keep "1000" as "1000" (not "1000.0") even when another row in the batch is missing
                 try:
                     frame[c] = s.astype("Int64")
                 except TypeError:
-                    raise ValueError(f"column {c} must hold whole numbers") from None
+                    raise RequestError(f"field {c} must hold whole numbers") from None
             else:
                 frame[c] = s.astype("float64")
     if not np.isfinite(frame[list(REQUIRED)].to_numpy(float)).all():
-        raise ValueError("TransactionDT and TransactionAmt must be finite numbers")
+        raise RequestError("TransactionDT and TransactionAmt must be finite numbers")
     if LABEL in frame:
         frame[LABEL] = 0                                   # unknown at scoring time and never used by the features
     frame["_pos"] = np.arange(len(frame))
@@ -93,9 +98,10 @@ def collate(subs, device="cpu"):
 
 
 class _BaseScorer:
-    def __init__(self, transformer, index, raw_kinds, version, late, info, max_future_skew):
+    def __init__(self, transformer, index, raw_kinds, version, late, info, max_future_skew, entities):
         if late not in ("reject", "clamp"):
             raise ValueError("late must be 'reject' or 'clamp'")
+        self.entities = tuple(entities)                  # entity types the model was trained with edges for
         self.transformer, self.index, self.raw_kinds = transformer, index, raw_kinds
         self.version, self.late, self.info = version, late, info or {}
         self.max_future_skew = max_future_skew
@@ -103,10 +109,21 @@ class _BaseScorer:
     def _frame(self, payloads):
         return build_frame(payloads, self.raw_kinds)
 
+    def _keys(self, frame, i):
+        """Entity keys of row i; types the model never trained on (e.g. no identity file) are ignored."""
+        return tuple(k if e in self.entities else None for e, k in zip(ENTITIES, keys_from_frame(frame, i)))
+
+    def _prepare(self, payloads):
+        """Validate, order and clamp the batch; the transform then sees the time the transaction is treated as arriving."""
+        frame = self._frame(payloads)
+        times = self._times(frame)
+        frame["TransactionDT"] = times
+        return frame, times
+
     def _times(self, frame):
         times = frame["TransactionDT"].to_numpy(np.int64)
         if np.isfinite(self.index.last_time) and times.max() > self.index.last_time + self.max_future_skew:
-            raise ValueError(f"request time {int(times.max())} is more than {self.max_future_skew} s in the future of the newest "
+            raise RequestError(f"request time {int(times.max())} is more than {self.max_future_skew} s in the future of the newest "
                              f"indexed time {int(self.index.last_time)}; refusing it so it cannot block later requests")
         if times.min() < self.index.last_time:
             if self.late == "reject":
@@ -125,8 +142,8 @@ def _lap(timings, name, t0):
 
 class OnlineScorer(_BaseScorer):
     def __init__(self, model, heads, transformer, index, raw_kinds, device="cpu", version="dev", late="reject", info=None,
-                 max_future_skew=DEFAULT_FUTURE_SKEW):
-        super().__init__(transformer, index, raw_kinds, version, late, info, max_future_skew)
+                 max_future_skew=DEFAULT_FUTURE_SKEW, entities=ENTITIES):
+        super().__init__(transformer, index, raw_kinds, version, late, info, max_future_skew, entities)
         self.model, self.heads, self.device = model.to(device).eval(), heads.to(device).eval(), device
 
     def score_batch(self, payloads, timings=None):
@@ -134,15 +151,15 @@ class OnlineScorer(_BaseScorer):
             return []
         tm = timings if timings is not None else {}
         t0 = time.perf_counter()
-        frame = self._frame(payloads)
+        frame, times = self._prepare(payloads)
         x = self.transformer.transform(frame)
         if not np.isfinite(x).all():
-            raise ValueError("the request produced non-finite features")
+            raise RequestError("the request produced non-finite features")
         _lap(tm, "feature_transform", t0)
-        times, amounts = self._times(frame), frame["TransactionAmt"].to_numpy(float)
+        amounts = frame["TransactionAmt"].to_numpy(float)
         subs = []
         for i in range(len(frame)):
-            keys = keys_from_frame(frame, i)
+            keys = self._keys(frame, i)
             t0 = time.perf_counter()
             subs.append(self.index.subgraph(keys, int(times[i]), x[i]))
             _lap(tm, "neighbour_lookup", t0)
@@ -165,8 +182,8 @@ class TabularOnlineScorer(_BaseScorer):
     """The tabular baseline under the same serving protocol; `hist_columns=None` is the naive model."""
 
     def __init__(self, model, transformer, index, raw_kinds, hist_columns=None, version="dev", late="reject", info=None,
-                 max_future_skew=DEFAULT_FUTURE_SKEW):
-        super().__init__(transformer, index, raw_kinds, version, late, info, max_future_skew)
+                 max_future_skew=DEFAULT_FUTURE_SKEW, entities=ENTITIES):
+        super().__init__(transformer, index, raw_kinds, version, late, info, max_future_skew, entities)
         self.model, self.hist_columns = model, hist_columns
 
     def score_batch(self, payloads, timings=None):
@@ -174,15 +191,15 @@ class TabularOnlineScorer(_BaseScorer):
             return []
         tm = timings if timings is not None else {}
         t0 = time.perf_counter()
-        frame = self._frame(payloads)
+        frame, times = self._prepare(payloads)
         x = self.transformer.transform(frame)
         if not np.isfinite(x).all():
-            raise ValueError("the request produced non-finite features")
+            raise RequestError("the request produced non-finite features")
         _lap(tm, "feature_transform", t0)
-        times, amounts = self._times(frame), frame["TransactionAmt"].to_numpy(float)
+        amounts = frame["TransactionAmt"].to_numpy(float)
         rows = []
         for i in range(len(frame)):
-            keys = keys_from_frame(frame, i)
+            keys = self._keys(frame, i)
             t0 = time.perf_counter()
             if self.hist_columns is not None:
                 h = self.index.history(keys, int(times[i]))
