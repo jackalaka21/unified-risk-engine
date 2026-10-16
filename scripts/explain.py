@@ -228,3 +228,26 @@ def explain_report(prepared, checkpoint, out_dir, device=None):
             "pyg_fidelity_plus": mean_pyg and mean_pyg["fidelity_plus"],
             "pyg_fidelity_minus": mean_pyg and mean_pyg["fidelity_minus"],
             "pyg_characterization": mean_pyg and mean_pyg["characterization"]}
+
+
+def main(argv=None):
+    import argparse
+    import json
+
+    from pipeline.config import config_hash, load_config
+    from pipeline.prepare import prepare
+
+    p = argparse.ArgumentParser(description="Explain test transactions and check stability and fidelity.")
+    p.add_argument("--config", default=None)
+    p.add_argument("--checkpoint", default="models/multitask_seed0.pt")
+    p.add_argument("--out", default="reports")
+    args = p.parse_args(argv)
+    cfg = load_config(args.config)
+    metrics = explain_report(prepare(cfg), resolve_path(args.checkpoint), resolve_path(args.out))
+    metrics.update(config_hash=config_hash(cfg), mode=cfg["explain"]["mode"])
+    (resolve_path(args.out) / "explain_metrics.json").write_text(json.dumps(metrics, indent=2), encoding="utf-8")
+    print(metrics)
+
+
+if __name__ == "__main__":
+    main()

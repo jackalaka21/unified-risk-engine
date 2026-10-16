@@ -1,6 +1,5 @@
 import nbformat
 import pytest
-from nbclient import NotebookClient
 
 from pipeline.config import PROJECT_ROOT, load_config
 from pipeline.prepare import prepare
@@ -37,6 +36,8 @@ def test_notebooks_execute_on_fixture_results(tmp_path, monkeypatch):
     summarize_drift(drift).to_csv(out / "drift_summary.csv", index=False)
     train_variant(prep, default_spec(prep, "multitask", 0), "cpu", tmp_path / "m.pt")
     explain_report(prep, tmp_path / "m.pt", reports, device="cpu")
+    from nbclient import NotebookClient  # not installed in CI, which skips this slow test
+
     monkeypatch.setenv("URE_FIXTURE", "1")
     monkeypatch.setenv("URE_OUT_DIR", str(out))
     monkeypatch.setenv("URE_REPORTS_DIR", str(reports))

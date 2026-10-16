@@ -1,6 +1,7 @@
 """IEEE-CIS-shaped synthetic data with a planted fraud signal, for tests only (never real results)."""
 from __future__ import annotations
 
+import importlib.util
 from pathlib import Path
 
 import numpy as np
@@ -82,7 +83,7 @@ def fixture_overrides():
         "splits": {"embargo_days": 1},
         "account": {"min_positives": 3},
         "model": {"hidden": 16, "heads": 2},
-        "train": {"num_neighbors": [5, 3], "batch_fraud": 256, "batch_account": 128, "epochs": 1,
+        "train": {"temporal": importlib.util.find_spec("pyg_lib") is not None, "num_neighbors": [5, 3], "batch_fraud": 256, "batch_account": 128, "epochs": 1,
                   "patience": 2, "device": "cpu", "max_steps_per_epoch": 4},
         "evaluation": {"bootstrap_samples": 50},
         "explain": {"epochs": 10, "fidelity_sample": 5, "n_explained": 2},

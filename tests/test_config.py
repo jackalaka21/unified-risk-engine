@@ -53,3 +53,12 @@ def test_device_cuda_unavailable_message(monkeypatch):
     monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
     with pytest.raises(RuntimeError, match="device: auto"):
         resolve_device("cuda")
+
+
+def test_fixture_overrides_disable_temporal_sampling_without_pyg_lib(monkeypatch):
+    import importlib.util
+
+    from tests.fixtures import fixture_overrides
+
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: None)
+    assert fixture_overrides()["train"]["temporal"] is False

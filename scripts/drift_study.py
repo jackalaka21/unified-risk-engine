@@ -93,11 +93,14 @@ def main(argv=None):
     cfg = load_config(args.config)
     prepared = prepare(cfg)
     table = drift_study(prepared, seed=cfg["drift"]["seed"] if args.seed is None else args.seed)
+    from pipeline.config import config_hash
+
     out = resolve_path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    table.to_csv(out / "drift_weekly.csv", index=False)
-    summarize_drift(table).to_csv(out / "drift_summary.csv", index=False)
-    print(summarize_drift(table).to_string(index=False))
+    summary = summarize_drift(table)
+    table.assign(config_hash=config_hash(cfg)).to_csv(out / "drift_weekly.csv", index=False)
+    summary.assign(config_hash=config_hash(cfg)).to_csv(out / "drift_summary.csv", index=False)
+    print(summary.to_string(index=False))
 
 
 if __name__ == "__main__":
