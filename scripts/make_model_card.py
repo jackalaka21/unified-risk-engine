@@ -101,7 +101,7 @@ def build_model_card(out_dir, reports_dir, fixture=False) -> str:
                                    if "drift_summary" in tables else "The drift study was not run.") + "\n")
     e = tables.get("explain")
     parts.append("## Explanations\n\n" + (
-        f"Mode `{e['mode']}`. Stability (top-k overlap across runs): {e['stability']:.2f}. Deleting the top-k features moves the "
+        f"Mode `{e['mode']}`. Stability (top-k overlap across runs): {e['stability']:.2f}. Deleting the top-k features of the reported ({e.get('fidelity_method', e['mode'])}) importances moves the "
         f"logit by {e['fidelity_top']:.2f} on average, against {e['fidelity_random']:.2f} for random features"
         + (f"; PyG fidelity+ {e['pyg_fidelity_plus']:.2f}, fidelity- {e['pyg_fidelity_minus']:.2f}, characterization "
            f"{e['pyg_characterization']:.2f}" if e.get("pyg_fidelity_plus") is not None else "")

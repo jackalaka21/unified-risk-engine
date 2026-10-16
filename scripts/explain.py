@@ -93,8 +93,9 @@ def _hetero_explainer(wrapper, epochs):
                      model_config=dict(mode="binary_classification", task_level="node", return_type="raw"))
 
 
-def explain_transaction(prepared, model, heads, tx_row, mode, seed, device):
-    batch = _seed_batch(prepared, tx_row, device)
+def explain_transaction(prepared, model, heads, tx_row, mode, seed, device, batch=None):
+    """`batch` lets several explainer seeds share one sampled neighbourhood (sampling is random under "uniform")."""
+    batch = _seed_batch(prepared, tx_row, device) if batch is None else batch
     wrapper = FraudLogitWrapper(model, heads, {nt: batch[nt].num_nodes for nt in batch.node_types}).to(device).eval()
     x_dict, edge_index_dict = batch.x_dict, _nonempty(batch.edge_index_dict)
     with torch.no_grad():
@@ -171,21 +172,26 @@ def explain_report(prepared, checkpoint, out_dir, device=None):
     sample = np.random.default_rng(0).choice(te, size=min(e["fidelity_sample"], len(te)), replace=False)
     stability, rows, mean_imp = [], [], np.zeros(len(names))
     for row in picks:
-        outs = [explain_transaction(prepared, model, heads, row, e["mode"], s, device) for s in range(e["stability_seeds"])]
+        batch = _seed_batch(prepared, row, device)               # one neighbourhood, so only the explainer's randomness varies
+        outs = [explain_transaction(prepared, model, heads, row, e["mode"], s, device, batch=batch)
+                for s in range(e["stability_seeds"])]
         runs = [o["importance"] for o in outs]
         stability.append(topk_overlap(runs, e["top_k"]))
         mean_imp += np.mean(runs, axis=0)
         edges = top_edges(outs[0], 5, prepared.entity_index) if hetero else []
         rows.append((row, top_features(np.mean(runs, axis=0), names, e["top_k"]), edges))
     fid_top, fid_rand, pyg = [], [], []
+    try_pyg = hetero                                             # stop after the first failure: it is a property of the model
     for row in sample:
-        occ = explain_transaction(prepared, model, heads, int(row), "occlusion", 0, device)
-        f = deletion_fidelity(occ["wrapper"], occ["x_dict"], occ["edge_index_dict"], occ["importance"], e["top_k"])
-        fid_top.append(f["drop_top_k"])
+        out = explain_transaction(prepared, model, heads, int(row), e["mode"], 0, device)
+        f = deletion_fidelity(out["wrapper"], out["x_dict"], out["edge_index_dict"], out["importance"], e["top_k"])
+        fid_top.append(f["drop_top_k"])                          # fidelity of the importances that are actually reported
         fid_rand.append(f["drop_random_k"])
-        if hetero:
-            r = pyg_fidelity(explain_transaction(prepared, model, heads, int(row), "hetero", 0, device))
-            if r is not None:
+        if try_pyg:
+            r = pyg_fidelity(out)
+            if r is None:
+                try_pyg = False
+            else:
                 pyg.append(r)
     user_rows = []
     if hetero:
@@ -207,7 +213,7 @@ def explain_report(prepared, checkpoint, out_dir, device=None):
              f"Mode: `{e['mode']}`. Features are anonymised, so names are column names, not business meaning. "
              "Explanations describe the model, not causes.", "",
              f"- Stability (mean top-{e['top_k']} overlap across {e['stability_seeds']} runs): {np.mean(stability):.2f}",
-             f"- Deletion fidelity (occlusion, {len(sample)} transactions): dropping the top-{e['top_k']} features changes the "
+             f"- Deletion fidelity ({e['mode']} importances, {len(sample)} transactions): dropping the top-{e['top_k']} features changes the "
              f"logit by {np.mean(fid_top):.3f} on average, against {np.mean(fid_rand):.3f} for random features"]
     if mean_pyg:
         lines.append(f"- PyG fidelity+ {mean_pyg['fidelity_plus']:.3f}, fidelity- {mean_pyg['fidelity_minus']:.3f}, "
@@ -224,7 +230,7 @@ def explain_report(prepared, checkpoint, out_dir, device=None):
         lines += [f"- edge `{et[1]}`: {s} -> {d} ({v:.3f})" for et, s, d, v in edges] + [""]
     (out_dir / "explanations.md").write_text("\n".join(lines), encoding="utf-8")
     return {"stability": float(np.mean(stability)), "fidelity_top": float(np.mean(fid_top)),
-            "fidelity_random": float(np.mean(fid_rand)), "n_fidelity": int(len(sample)),
+            "fidelity_random": float(np.mean(fid_rand)), "n_fidelity": int(len(sample)), "fidelity_method": e["mode"],
             "pyg_fidelity_plus": mean_pyg and mean_pyg["fidelity_plus"],
             "pyg_fidelity_minus": mean_pyg and mean_pyg["fidelity_minus"],
             "pyg_characterization": mean_pyg and mean_pyg["characterization"]}

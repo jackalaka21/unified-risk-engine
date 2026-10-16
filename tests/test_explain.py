@@ -81,3 +81,33 @@ def test_occlusion_mode_always_works_on_the_trained_model(trained):
     row = int(np.flatnonzero(prep.graph["transaction"].test_mask.numpy())[0])
     out = explain_transaction(prep, res.model, res.heads, row, "occlusion", seed=0, device="cpu")
     assert out["importance"].shape == (len(prep.transformer.feature_names),) and np.isfinite(out["logit"])
+
+
+@pytest.mark.parametrize("mode", ["occlusion", "hetero"])
+@pytest.mark.slow
+def test_report_checks_the_fidelity_of_the_importances_it_shows(trained, tmp_path, mode):
+    import copy
+
+    from scripts.explain import explain_report
+    from scripts.train import train_variant
+
+    prep, res = trained
+    prep = copy.copy(prep)
+    prep.cfg = copy.deepcopy(prep.cfg)
+    prep.cfg["explain"]["mode"] = mode
+    ckpt = tmp_path / "m.pt"
+    train_variant(prep, default_spec(prep, "fraud_only", 0), "cpu", ckpt)
+    metrics = explain_report(prep, ckpt, tmp_path / "reports", device="cpu")
+    assert metrics["fidelity_method"] == mode
+    assert f"Deletion fidelity ({mode}" in (tmp_path / "reports" / "explanations.md").read_text(encoding="utf-8")
+
+
+def test_one_sampled_neighbourhood_is_reused_for_all_explainer_seeds(trained):
+    from scripts.explain import _seed_batch
+
+    prep, res = trained
+    row = int(np.flatnonzero(prep.graph["transaction"].test_mask.numpy())[0])
+    batch = _seed_batch(prep, row, "cpu")
+    a = explain_transaction(prep, res.model, res.heads, row, "occlusion", seed=0, device="cpu", batch=batch)
+    b = explain_transaction(prep, res.model, res.heads, row, "occlusion", seed=1, device="cpu", batch=batch)
+    assert a["batch"] is batch and b["batch"] is batch and a["logit"] == b["logit"]
