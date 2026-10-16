@@ -20,3 +20,14 @@ def test_workflow_runs_the_cpu_suite_without_secrets():
     assert 'pytest -m "not gpu and not slow"' in steps and "requirements-ci.txt" in steps
     assert "secrets." not in text and "KAGGLE" not in text
     assert "cu130" not in (PROJECT_ROOT / "requirements-ci.txt").read_text(encoding="utf-8")
+
+
+from scripts.make_ci_requirements import serving_requirements
+
+
+def test_serving_requirements_keep_only_what_the_service_imports():
+    lines = ["numpy==2.3.0", "pandas==2.3.1", "pytest==8.4.0", "scikit-learn==1.7.0", "fastapi==0.115.0",
+             "uvicorn==0.34.0", "torch-geometric==2.8.1", "PyYAML==6.0.2", "matplotlib==3.10.0"]
+    out = serving_requirements(lines)
+    assert set(out) == {"numpy==2.3.0", "pandas==2.3.1", "fastapi==0.115.0", "uvicorn==0.34.0",
+                        "torch-geometric==2.8.1", "PyYAML==6.0.2"}

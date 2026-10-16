@@ -1,0 +1,11 @@
+.git
+.github
+data
+models/*.pt
+outputs
+plots
+reports
+notebooks
+tests
+docs
+scripts

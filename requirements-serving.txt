@@ -1,0 +1,6 @@
+PyYAML==6.0.3
+fastapi==0.143.2
+numpy==2.5.4
+pandas==3.0.6
+torch-geometric==2.8.1
+uvicorn==0.54.0
