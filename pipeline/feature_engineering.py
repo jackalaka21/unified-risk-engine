@@ -16,6 +16,18 @@ def _cols(df: pd.DataFrame, prefix: str) -> list[str]:
     return [c for _, c in sorted(found)]
 
 
+SMALL_FRAME = 64
+
+
+def _frequencies_small(series: pd.Series, freq: dict) -> np.ndarray:
+    """Same result as `series.astype("string").fillna("nan").map(freq).fillna(0.0)`, without the pandas overhead."""
+    out = np.empty(len(series))
+    for i, v in enumerate(series.to_numpy(dtype=object)):
+        missing = v is None or v is pd.NA or (isinstance(v, float) and v != v)
+        out[i] = freq.get("nan" if missing else str(v), 0.0)
+    return out
+
+
 class FeatureTransformer:
     def __init__(self, max_v_columns: int = 100, v_max_missing: float = 0.5):
         self.max_v_columns = max_v_columns
@@ -50,16 +62,19 @@ class FeatureTransformer:
         cols += [np.sin(2 * np.pi * hour / 24), np.cos(2 * np.pi * hour / 24),
                  np.sin(2 * np.pi * dow / 7), np.cos(2 * np.pi * dow / 7)]
         for c in self.cat_cols:
-            mapped = df[c].astype("string").fillna("nan").map(self.freq[c])
-            cols.append(mapped.fillna(0.0).to_numpy(dtype=float))
-        for c in self.num_cols:
-            mean, std = self.stats[c]
-            values = df[c].astype(float).to_numpy() if c in df.columns else np.full(len(df), np.nan)
-            cols.append(np.nan_to_num((values - mean) / std, nan=0.0, posinf=0.0, neginf=0.0))
-        for c in self.na_cols:
-            values = df[c].to_numpy() if c in df.columns else np.full(len(df), np.nan)
-            cols.append(pd.isna(values).astype(float))
-        return np.column_stack(cols).astype(np.float32)
+            if len(df) <= SMALL_FRAME:                       # single requests: plain dict look-ups beat pandas' string machinery
+                cols.append(_frequencies_small(df[c], self.freq[c]))
+            else:
+                mapped = df[c].astype("string").fillna("nan").map(self.freq[c])
+                cols.append(mapped.fillna(0.0).to_numpy(dtype=float))
+        # numeric and missing-indicator blocks are built in one pass each (absent columns count as missing); this is
+        # the serving hot path, where a column-by-column loop cost tens of milliseconds per request
+        mean = np.array([self.stats[c][0] for c in self.num_cols], dtype=float)
+        std = np.array([self.stats[c][1] for c in self.num_cols], dtype=float)
+        values = df.reindex(columns=self.num_cols).to_numpy(dtype=float, na_value=np.nan)
+        numeric = np.nan_to_num((values - mean) / std, nan=0.0, posinf=0.0, neginf=0.0)
+        missing = df.reindex(columns=self.na_cols).isna().to_numpy(dtype=float)
+        return np.hstack([np.column_stack(cols), numeric, missing]).astype(np.float32)
 
 
 def fit_on_train(df: pd.DataFrame, periods, cfg: dict) -> FeatureTransformer:

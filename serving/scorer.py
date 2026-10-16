@@ -45,6 +45,30 @@ def payload_of(df: pd.DataFrame, i: int) -> dict:
     return {c: _py(row[c]) for c in df.columns if c not in DERIVED and c != LABEL}
 
 
+def _number(value, column):
+    if value is None or (isinstance(value, float) and np.isnan(value)):
+        return np.nan
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        raise RequestError(f"field {column} must be numeric") from None
+
+
+def _column(values, column, kind):
+    """One request column as a typed array: floats stay floats, integers stay nullable integers (so "1000" never
+    becomes "1000.0" because another row in the batch is missing), everything else is kept as is."""
+    if kind == "object":
+        return np.array(values, dtype=object)
+    numbers = np.array([_number(v, column) for v in values], dtype=float)
+    if kind == "float":
+        return numbers
+    with np.errstate(invalid="ignore"):
+        whole = np.isnan(numbers) | (np.mod(numbers, 1) == 0)
+    if not whole.all() or np.isinf(numbers).any():
+        raise RequestError(f"field {column} must hold whole numbers")
+    return pd.array([None if np.isnan(v) else int(v) for v in numbers], dtype="Int64")
+
+
 def build_frame(payloads, kinds) -> pd.DataFrame:
     for p in payloads:
         missing = [c for c in REQUIRED if p.get(c) is None]
@@ -53,22 +77,8 @@ def build_frame(payloads, kinds) -> pd.DataFrame:
         for c in kinds:
             if isinstance(p.get(c), (dict, list, tuple, set)):
                 raise RequestError(f"field {c} must be a single value, not a collection")
-    frame = pd.DataFrame({c: [p.get(c) for p in payloads] for c in kinds})
-    for c, kind in kinds.items():
-        if kind == "object":
-            frame[c] = frame[c].astype(object)
-        else:
-            s = pd.to_numeric(frame[c], errors="coerce")
-            if (s.isna() & frame[c].notna()).any():
-                raise RequestError(f"field {c} must be numeric")
-            if kind == "int":
-                # nullable integers keep "1000" as "1000" (not "1000.0") even when another row in the batch is missing
-                try:
-                    frame[c] = s.astype("Int64")
-                except TypeError:
-                    raise RequestError(f"field {c} must hold whole numbers") from None
-            else:
-                frame[c] = s.astype("float64")
+    columns = {c: _column([p.get(c) for p in payloads], c, kind) for c, kind in kinds.items()}   # built once, not column by column
+    frame = pd.DataFrame(columns)
     if not np.isfinite(frame[list(REQUIRED)].to_numpy(float)).all():
         raise RequestError("TransactionDT and TransactionAmt must be finite numbers")
     if LABEL in frame:

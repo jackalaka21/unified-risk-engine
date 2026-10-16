@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 import pytest
 
 from pipeline.data_loading import finalize
@@ -60,3 +61,37 @@ def test_missing_values_get_indicators_not_nans(df, periods, cfg):
     assert any(name.startswith("na_D") for name in ft.feature_names)
     x = ft.transform(df.head(50))
     assert np.isfinite(x).all()
+
+
+def _reference_transform(ft, df):
+    """The straightforward column-by-column implementation, kept as the oracle for the vectorised transform."""
+    cols = []
+    log_amt = np.log1p(df["TransactionAmt"].astype(float).to_numpy())
+    cols.append((log_amt - ft.log_amt_mean) / ft.log_amt_std)
+    hour = (df["TransactionDT"].to_numpy() // 3600) % 24
+    dow = (df["TransactionDT"].to_numpy() // 86400) % 7
+    cols += [np.sin(2 * np.pi * hour / 24), np.cos(2 * np.pi * hour / 24),
+             np.sin(2 * np.pi * dow / 7), np.cos(2 * np.pi * dow / 7)]
+    for c in ft.cat_cols:
+        cols.append(df[c].astype("string").fillna("nan").map(ft.freq[c]).fillna(0.0).to_numpy(dtype=float))
+    for c in ft.num_cols:
+        mean, std = ft.stats[c]
+        values = df[c].astype(float).to_numpy() if c in df.columns else np.full(len(df), np.nan)
+        cols.append(np.nan_to_num((values - mean) / std, nan=0.0, posinf=0.0, neginf=0.0))
+    for c in ft.na_cols:
+        values = df[c].to_numpy() if c in df.columns else np.full(len(df), np.nan)
+        cols.append(pd.isna(values).astype(float))
+    return np.column_stack(cols).astype(np.float32)
+
+
+def test_the_vectorised_transform_matches_the_column_by_column_oracle(raw_frames):
+    df = finalize(raw_frames[0])
+    ft = FeatureTransformer(max_v_columns=20, v_max_missing=0.5).fit(df)
+    np.testing.assert_array_equal(ft.transform(df), _reference_transform(ft, df))
+    small = df.iloc[:7].drop(columns=["V3", "D2"]).copy()                     # absent columns count as missing
+    small.loc[small.index[0], "C1"] = np.inf
+    np.testing.assert_array_equal(ft.transform(small), _reference_transform(ft, small))
+    nullable = df.iloc[:7].copy()
+    nullable["card1"] = nullable["card1"].astype("Int64")
+    nullable.loc[nullable.index[2], "card1"] = pd.NA
+    np.testing.assert_array_equal(ft.transform(nullable), _reference_transform(ft, nullable))
