@@ -12,7 +12,8 @@ def write_tables(tmp_path, hash_a="aaaa", hash_b="aaaa"):
     pd.DataFrame({"model": ["history_tabular", "history_tabular", "multitask", "multitask"], "seed": [0, 1, 0, 1],
                   "config_hash": [hash_a, hash_a, hash_b, hash_b], "n_test": 1000, "prevalence": 0.03,
                   "pr_auc": [0.50, 0.52, 0.5678, 0.5722], "pr_auc_lo": 0.4, "pr_auc_hi": 0.7, "roc_auc": 0.9,
-                  "recall_at_fpr": 0.4, "recall@0.01": 0.31, "amount_recall@0.01": 0.35, "cost": 900.0,
+                  "recall_at_fpr": 0.4, "realised_fpr": 0.012, "recall@0.005": 0.2, "recall@0.01": 0.31, "recall@0.05": 0.55,
+                  "amount_recall@0.005": 0.22, "amount_recall@0.01": 0.35, "amount_recall@0.05": 0.6, "cost": 900.0,
                   "cost_flag_none": 1500.0, "cost_flag_all": 4000.0, "brier": 0.02, "ece": 0.01}).to_csv(out / "results_fraud.csv", index=False)
     pd.DataFrame({"model": ["hgb_user_aggregates", "multitask"], "seed": 0, "config_hash": hash_a, "n_test": 200,
                   "prevalence": 0.1, "pr_auc": [0.3, 0.4], "roc_auc": 0.8}).to_csv(out / "results_account.csv", index=False)
@@ -128,3 +129,18 @@ def test_sampling_rule_table_numbers_reach_the_card(tmp_path):
                   "temporal": True, "config_hash": "aaaa"}).to_csv(out / "results_sampling_rule.csv", index=False)
     card = build_model_card(out, reports)
     assert "0.432" in card and "0.412" in card and "neighbour rule" in card
+
+
+def test_card_shows_bootstrap_intervals_every_budget_and_the_flag_nothing_cost(tmp_path):
+    out, reports = write_tables(tmp_path)
+    card = build_model_card(out, reports)
+    assert "0.400-0.700" in card                                   # mean bootstrap bounds of the PR-AUC
+    for column in ("realised_fpr", "recall@0.005", "recall@0.01", "recall@0.05", "amount_recall@0.05", "cost_flag_none"):
+        assert column in card, column
+
+
+def test_card_does_not_claim_the_graph_model_gets_history_features(tmp_path):
+    out, reports = write_tables(tmp_path)
+    card = build_model_card(out, reports)
+    assert "same history features as the graph model" not in card
+    assert "message passing" in card

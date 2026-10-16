@@ -11,7 +11,7 @@ from pipeline.config import resolve_path
 from pipeline.notebook_support import seed_summary
 
 START, END = "<!-- RESULTS:START -->", "<!-- RESULTS:END -->"
-FRAUD_COLS = ["pr_auc", "recall_at_fpr", "recall@0.01", "amount_recall@0.01", "cost", "brier", "ece"]
+FRAUD_COLS = ["recall_at_fpr", "realised_fpr", "cost", "cost_flag_none", "brier", "ece"]   # plus every alert-budget column
 
 
 def load_tables(out_dir, reports_dir) -> dict:
@@ -50,13 +50,24 @@ def _table(df: pd.DataFrame) -> str:
     return "\n".join(lines)
 
 
+def _fraud_columns(fraud: pd.DataFrame) -> list:
+    budgets = sorted((c for c in fraud.columns if "@" in c), key=lambda c: (float(c.split("@")[1]), c.split("@")[0]))
+    return [c for c in FRAUD_COLS[:2] if c in fraud] + budgets + [c for c in FRAUD_COLS[2:] if c in fraud]
+
+
 def results_markdown(fraud: pd.DataFrame, account: pd.DataFrame) -> str:
     f = seed_summary(fraud, ["pr_auc"])
-    others = fraud.groupby("model")[[c for c in FRAUD_COLS if c != "pr_auc" and c in fraud.columns]].mean().reset_index()
+    others = fraud.groupby("model")[_fraud_columns(fraud)].mean().reset_index()
     f = f.merge(others, on="model")
     f["pr_auc (mean, min-max over seeds)"] = [f"{m:.3f} ({lo:.3f}-{hi:.3f})" for m, lo, hi in
                                               zip(f["pr_auc_mean"], f["pr_auc_min"], f["pr_auc_max"])]
-    f = f[["model", "pr_auc (mean, min-max over seeds)"] + [c for c in others.columns if c != "model"]]
+    cols = ["model", "pr_auc (mean, min-max over seeds)"]
+    if {"pr_auc_lo", "pr_auc_hi"} <= set(fraud.columns):
+        ci = fraud.groupby("model")[["pr_auc_lo", "pr_auc_hi"]].mean()
+        f["bootstrap 95% CI (mean of per-seed bounds)"] = [f"{ci.loc[m, 'pr_auc_lo']:.3f}-{ci.loc[m, 'pr_auc_hi']:.3f}"
+                                                           for m in f["model"]]
+        cols.append("bootstrap 95% CI (mean of per-seed bounds)")
+    f = f[cols + [c for c in others.columns if c != "model"]]
     a = seed_summary(account, ["pr_auc"])[["model", "pr_auc_mean", "pr_auc_min", "pr_auc_max"]]
     return ("Transaction fraud, test period:\n\n" + _table(f) + "\n\nAccount risk (proxy label), test users:\n\n" + _table(a))
 
@@ -82,7 +93,7 @@ def build_model_card(out_dir, reports_dir, fixture=False) -> str:
                  "- Users are split into disjoint train, validation and test groups; the account label uses history up to the end of training only.\n"
                  "- Feature statistics are fitted on the train period only; history features are strictly causal.\n"
                  "- Neighbour sampling only reaches transactions at or before the seed transaction's time.\n"
-                 "- Baselines get the same history features as the graph model.\n")
+                 "- The history-aware baseline gets hand-built history features (counts, amounts and recency per user, email domain and device, from strictly earlier transactions); the graph model gets the same per-transaction features and has to learn history through message passing.\n")
     parts.append("## Results\n\n" + results_markdown(fraud, tables["account"]) + "\n")
     parts.append("Cost uses an assumed review cost per false alert; compare it with `cost_flag_none`, the cost of flagging nothing. "
                  "Differences smaller than the bootstrap interval or the range over seeds are not evidence of a better model.\n")

@@ -6,7 +6,7 @@ A temporal heterogeneous graph neural network for transaction fraud and an accou
 
 ## The question
 
-Under strict temporal evaluation, does a heterogeneous GNN add predictive value for transaction fraud over *history-aware* tree models given the same history features, and does a second account-level head help or hurt? Either answer is a valid result; this repository reports whichever is true.
+Under strict temporal evaluation, does a heterogeneous GNN add predictive value for transaction fraud over *history-aware* tree models (which get hand-built history features, while the GNN must learn history through message passing), and does a second account-level head help or hurt? Either answer is a valid result; this repository reports whichever is true.
 
 Honest scope: IEEE-CIS has no real credit-default labels. The account-level target is a **proxy** derived from fraud history, so the two tasks are coupled by construction. This is joint fraud and account-risk modelling on a shared graph, not validated credit scoring.
 
