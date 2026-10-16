@@ -19,3 +19,7 @@ wandb/
 # generated outputs
 outputs/
 artifacts/
+
+# editor settings and the interim card run_all writes next to the tables (the real card is docs/MODEL_CARD.md)
+.vscode/
+plots/MODEL_CARD.md

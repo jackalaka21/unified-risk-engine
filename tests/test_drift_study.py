@@ -78,3 +78,9 @@ def test_the_gnn_arm_never_tunes_on_the_weeks_it_is_evaluated_on(raw_frames, mon
     prep = prepare(load_config(overrides=fixture_overrides()), df=raw_frames[0])
     ds.drift_study(prep, seed=0, kinds=("gnn_fraud_only",), log=lambda *_: None)
     assert specs and all(s.epochs is not None and len(s.fraud_val_idx) == 0 for s in specs)   # fixed epochs, no validation
+
+
+def test_the_drift_study_can_follow_the_stable_history_baseline_too(raw_frames):
+    prep = prepare(load_config(overrides=fixture_overrides()), df=raw_frames[0])
+    table = drift_study(prep, seed=0, kinds=("history_stable_tabular",), log=lambda *_: None)
+    assert set(table["kind"]) == {"history_stable_tabular"} and {"static", "retrain"} == set(table["schedule"])

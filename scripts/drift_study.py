@@ -45,7 +45,11 @@ def _train_rows(prepared, cutoff):
     return np.flatnonzero(known & (df["user"].map(prepared.user_split) == "train").to_numpy())
 
 
-def drift_study(prepared, seed=0, kinds=("history_tabular", "gnn_fraud_only"), device=None, log=print):
+TABULAR_KINDS = {"history_tabular": False, "history_stable_tabular": True}      # kind -> drop cumulative counts
+
+
+def drift_study(prepared, seed=0, kinds=("history_tabular", "history_stable_tabular", "gnn_fraud_only"), device=None,
+                log=print):
     cfg, df, p = prepared.cfg, prepared.df, prepared.periods
     device = resolve_device(device or cfg["train"]["device"])
     times, y = df["TransactionDT"].to_numpy(), df["isFraud"].to_numpy()
@@ -56,8 +60,8 @@ def drift_study(prepared, seed=0, kinds=("history_tabular", "gnn_fraud_only"), d
     for kind in kinds:
         log(f"drift study: {kind}, {len(cutoffs)} retrain point(s)")
         scores = []
-        if kind == "history_tabular":
-            X = _history_matrix(prepared)
+        if kind in TABULAR_KINDS:
+            X = _history_matrix(prepared, stable=TABULAR_KINDS[kind])
             base_rows = np.flatnonzero(prepared.graph["transaction"].train_mask.numpy())
             scores.append(fit_hgb(X[base_rows], y[base_rows], seed).predict_proba(X[eval_rows])[:, 1])
             for c in cutoffs:

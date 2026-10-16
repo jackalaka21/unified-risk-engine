@@ -19,7 +19,7 @@ CHECKPOINT_NAME = "multitask_seed0.pt"          # the checkpoint the explanation
 
 def run_all(cfg, out_dir, reports_dir, models_dir, df=None,
             variants=("multitask", "fraud_only", "account_only", "no_graph"), seeds=None,
-            drift_kinds=("history_tabular", "gnn_fraud_only"), device=None, fixture=False, log=print):
+            drift_kinds=("history_tabular", "history_stable_tabular", "gnn_fraud_only"), device=None, fixture=False, log=print):
     out_dir, reports_dir, models_dir = Path(out_dir), Path(reports_dir), Path(models_dir)
     device = resolve_device(device or cfg["train"]["device"])
     seeds = cfg["train"]["seeds"] if seeds is None else seeds

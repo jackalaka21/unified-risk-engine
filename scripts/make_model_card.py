@@ -78,6 +78,63 @@ def results_markdown(fraud: pd.DataFrame, account: pd.DataFrame) -> str:
     return ("Transaction fraud, test period:\n\n" + _table(f) + "\n\nAccount risk (proxy label), test users:\n\n" + _table(a))
 
 
+def _mean_range(table, model, col="pr_auc"):
+    v = table.loc[table["model"] == model, col]
+    return (float(v.mean()), float(v.max() - v.min())) if len(v) else None
+
+
+def _compare(table, a, b, what):
+    """One computed comparison of two models' mean PR-AUC; a gap inside the seed range is not presented as an effect."""
+    ma, mb = _mean_range(table, a), _mean_range(table, b)
+    if ma is None or mb is None:
+        return None
+    gap = ma[0] - mb[0]
+    note = " (within the seed range, so not an effect this run can claim)" if abs(gap) <= max(ma[1], mb[1]) else ""
+    return f"- {what}: {a} versus {b}, {gap:+.3f} PR-AUC{note}."
+
+
+def findings_markdown(fraud: pd.DataFrame, account=None, drift=None) -> str:
+    """Every number and every direction below is computed from the result tables; nothing is typed by hand."""
+    means = {m: float(g["pr_auc"].mean()) for m, g in fraud.groupby("model")}
+    lines = []
+    best = max(means, key=means.get)
+    lines.append(f"- Highest mean test PR-AUC: {best} ({means[best]:.3f}).")
+    graph = [m for m in ("fraud_only", "multitask") if m in means]
+    tabular = [m for m in ("naive_tabular", "history_tabular", "history_stable_tabular") if m in means]
+    if graph and tabular:
+        g, t = max(graph, key=means.get), max(tabular, key=means.get)
+        line = _compare(fraud, g, t, "Best graph model against best tabular model")
+        lines.append(f"- The best graph model is {g} ({means[g]:.3f}) and the best tabular model is {t} ({means[t]:.3f}).")
+        lines.append(line)
+    for a, b, what in (("fraud_only", "no_graph", "Graph structure"), ("multitask", "fraud_only", "The second (account) head"),
+                       ("history_tabular", "naive_tabular", "History features as specified"),
+                       ("history_stable_tabular", "naive_tabular", "History features without cumulative counts")):
+        line = _compare(fraud, a, b, what)
+        if line:
+            lines.append(line)
+    if "ece" in fraud:
+        ece = {m: float(g["ece"].mean()) for m, g in fraud.groupby("model")}
+        lo, hi = min(ece, key=ece.get), max(ece, key=ece.get)
+        lines.append(f"- Calibration (ECE, lower is better) runs from {ece[lo]:.3f} ({lo}) to {ece[hi]:.3f} ({hi}).")
+    if account is not None and len(account):
+        acc = {m: float(g["pr_auc"].mean()) for m, g in account.groupby("model")}
+        top = max(acc, key=acc.get)
+        lines.append(f"- Account risk: highest mean PR-AUC is {top} ({acc[top]:.3f}); "
+                     + ", ".join(f"{m} {v:.3f}" for m, v in sorted(acc.items(), key=lambda kv: -kv[1]) if m != top) + ".")
+    if drift is not None and len(drift):
+        for kind, g in drift.groupby("kind"):
+            s = g.set_index("schedule")
+            if {"static", "retrain"} <= set(s.index):
+                lines.append(f"- Drift, {kind}: mean weekly PR-AUC {s.loc['static', 'mean_pr_auc']:.3f} when trained once and "
+                             f"{s.loc['retrain', 'mean_pr_auc']:.3f} with periodic retraining; trend per week "
+                             f"{s.loc['static', 'slope_per_week']:+.4f} (static) and {s.loc['retrain', 'slope_per_week']:+.4f} (retrained).")
+    lines.append("- Whether dropping the cumulative counts explains any gap between history_tabular and history_stable_tabular is a "
+                 "hypothesis: such counts only grow, so their distribution can differ between the train and test periods, but this "
+                 "pipeline does not test that directly. Likewise, any reason given for a graph model doing better or worse than "
+                 "a tabular one is a hypothesis unless an ablation above tested it.")
+    return "\n".join(lines)
+
+
 def build_model_card(out_dir, reports_dir, fixture=False) -> str:
     tables = load_tables(out_dir, reports_dir)
     cfg_hash = check_single_config(tables)
@@ -106,6 +163,7 @@ def build_model_card(out_dir, reports_dir, fixture=False) -> str:
                  "- Neighbour sampling only reaches transactions that arrived no later than the seed (equal timestamps are ordered by transaction ID).\n"
                  "- The history-aware baseline gets hand-built history features (counts, amounts and recency per user, email domain and device, from strictly earlier transactions); the graph model gets the same per-transaction features and has to learn history through message passing.\n")
     parts.append("## Results\n\n" + results_markdown(fraud, tables["account"]) + "\n")
+    parts.append("## Findings\n\n" + findings_markdown(fraud, tables["account"], tables.get("drift_summary")) + "\n")
     if "pr_auc_boot_kept" in fraud:
         parts.append(f"Bootstrap resamples without both classes are dropped; at least {fraud['pr_auc_boot_kept'].min():.2f} of the "
                      "resamples were kept for every row.\n")
@@ -131,7 +189,9 @@ def build_model_card(out_dir, reports_dir, fixture=False) -> str:
     parts.append("## Serving and latency\n\n" + serving + "\n")
     parts.append("## Limitations\n\n- One dataset, one split in time; no claim about other portfolios or later periods.\n"
                  "- The account label is a proxy derived from fraud history, not a ground-truth account-takeover label.\n"
-                 "- Anonymised features limit what an explanation can say.\n- Three seeds give a range, not a confidence interval.\n"
+                 "- Anonymised features limit what an explanation can say.\n- Models trained with focal loss are typically poorly "
+                 "calibrated (see the ECE and Brier columns), so their scores rank transactions but are not probabilities; thresholds "
+                 "are chosen on the validation period.\n- Three seeds give a range, not a confidence interval.\n"
                  "- Label-based history features (a user's past confirmed frauds) are excluded from the baseline, so a production "
                  "system could do better.\n- Nothing here is measured on real data unless the Kaggle files were supplied: check the "
                  "banner at the top of this card.\n"
@@ -182,6 +242,10 @@ def main(argv=None):
         path = resolve_path(a.readme)
         path.write_text(splice_readme(path.read_text(encoding="utf-8"),
                                       banner + results_markdown(tables["fraud"], tables["account"])), encoding="utf-8")
+        if "<!-- FINDINGS:START -->" in path.read_text(encoding="utf-8"):
+            path.write_text(splice_block(path.read_text(encoding="utf-8"), "FINDINGS",
+                                         findings_markdown(tables["fraud"], tables["account"], tables.get("drift_summary"))),
+                            encoding="utf-8")
         if "latency" in tables and "<!-- LATENCY:START -->" in path.read_text(encoding="utf-8"):
             path.write_text(splice_block(path.read_text(encoding="utf-8"), "LATENCY",
                                          latency_markdown(tables["latency"], tables["latency_meta"])), encoding="utf-8")

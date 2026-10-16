@@ -17,7 +17,7 @@ def test_fraud_baselines_return_aligned_probabilities(prep):
     out = fraud_baselines(prep, seed=0, max_iter=30)
     val = np.flatnonzero(prep.graph["transaction"].val_mask.numpy())
     test = np.flatnonzero(prep.graph["transaction"].test_mask.numpy())
-    assert set(out) == {"naive_tabular", "history_tabular"}
+    assert set(out) == {"naive_tabular", "history_tabular", "history_stable_tabular"}
     for res in out.values():
         assert res["val"].shape == (len(val),) and res["test"].shape == (len(test),)
         assert ((res["test"] >= 0) & (res["test"] <= 1)).all()
@@ -58,3 +58,20 @@ def test_an_all_nan_training_column_does_not_break_the_tree_baseline():
     other = X.copy()
     other[:, 3] = 5.0                                   # a value the model never saw in that column is ignored
     assert np.allclose(model.predict_proba(X)[:, 1], model.predict_proba(other)[:, 1])
+
+
+def test_stable_history_drops_exactly_the_counts_that_grow_with_time():
+    from scripts.baseline import stable_history_columns
+
+    cols = ["user_n_prior", "user_n_1d", "user_n_7d", "user_amt_mean", "user_secs_since_prev", "user_distinct_devices",
+            "user_distinct_emails", "email_n_prior", "device_n_prior", "device_amt_std"]
+    assert stable_history_columns(cols) == ["user_n_1d", "user_n_7d", "user_amt_mean", "user_secs_since_prev", "device_amt_std"]
+
+
+def test_the_stable_history_model_never_sees_a_cumulative_count(prep):
+    from scripts.baseline import stable_history_columns
+
+    out = fraud_baselines(prep, seed=0, max_iter=20)
+    stable = stable_history_columns(list(prep.hist.columns))
+    assert out["history_stable_tabular"]["model"].n_features_in_ == prep.x.shape[1] + len(stable)
+    assert len(stable) < len(prep.hist.columns)

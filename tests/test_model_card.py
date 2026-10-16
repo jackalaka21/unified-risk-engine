@@ -180,3 +180,49 @@ def test_the_card_types_no_dataset_numbers_and_states_every_known_limit(tmp_path
     assert "590k" not in card and "six months" not in card
     assert "label-based history" in card.lower() and "real data" in card.lower()
     assert "bootstrap resamples" in card.lower() and "0.97" in card
+
+
+def _frames(pr):
+    """pr: model -> per-seed PR-AUCs; the other columns are filler."""
+    rows = [{"model": m, "seed": s, "pr_auc": v, "ece": 0.01 + 0.1 * (m == "multitask"), "config_hash": "aaaa"}
+            for m, vs in pr.items() for s, v in enumerate(vs)]
+    return pd.DataFrame(rows)
+
+
+def test_findings_are_computed_from_the_tables_with_directions_and_sizes():
+    from scripts.make_model_card import findings_markdown
+
+    fraud = _frames({"naive_tabular": [0.47, 0.46, 0.48], "history_tabular": [0.45, 0.45, 0.45],
+                     "history_stable_tabular": [0.49, 0.48, 0.50], "no_graph": [0.33, 0.34, 0.33],
+                     "fraud_only": [0.35, 0.36, 0.34], "multitask": [0.32, 0.33, 0.34]})
+    md = findings_markdown(fraud, pd.DataFrame({"model": ["multitask", "mean_fraud_score"], "seed": 0, "pr_auc": [0.25, 0.45]}))
+    assert "Highest mean test PR-AUC: history_stable_tabular (0.490)" in md
+    assert "best graph model is fraud_only (0.350)" in md
+    assert "fraud_only versus no_graph" in md and "+0.017" in md                 # graph structure
+    assert "multitask versus fraud_only" in md and "-0.020" in md                # the account head
+    assert "history_tabular versus naive_tabular" in md and "-0.020" in md
+    assert "history_stable_tabular versus naive_tabular" in md and "+0.020" in md
+    assert "mean_fraud_score" in md                                              # the trivial account baseline
+
+
+def test_differences_inside_the_seed_range_are_not_presented_as_effects():
+    from scripts.make_model_card import findings_markdown
+
+    fraud = _frames({"no_graph": [0.30, 0.40], "fraud_only": [0.34, 0.36]})
+    line = [l for l in findings_markdown(fraud, None).splitlines() if "fraud_only versus no_graph" in l][0]
+    assert "within the seed range" in line
+
+
+def test_findings_tolerate_missing_models_and_state_no_causes():
+    from scripts.make_model_card import findings_markdown
+
+    md = findings_markdown(_frames({"multitask": [0.4, 0.41]}), None)
+    assert "multitask" in md and "because" not in md.lower() and "caused" not in md.lower()
+    assert findings_markdown(_frames({"naive_tabular": [0.5]}), None)               # a single seed has no range: still fine
+
+
+def test_the_card_has_a_findings_section_and_the_cumulative_count_note_is_a_hypothesis(tmp_path):
+    out, reports = write_tables(tmp_path)
+    card = build_model_card(out, reports)
+    assert "## Findings" in card
+    assert "hypothesis" in card.lower() and "cumulative" in card.lower()

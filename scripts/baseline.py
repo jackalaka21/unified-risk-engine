@@ -35,15 +35,26 @@ def _tx_idx(prepared, split):
     return np.flatnonzero(prepared.graph["transaction"][f"{split}_mask"].numpy())
 
 
-def _history_matrix(prepared):
-    return np.hstack([prepared.x, prepared.hist.to_numpy(np.float32)])
+# Counts over a user's whole history only ever grow, so their distribution shifts between the train and test periods
+# (on IEEE-CIS the median user_n_prior is several times larger in the test period). The "stable" baseline drops them.
+CUMULATIVE = ("_n_prior", "_distinct_devices", "_distinct_emails")
+
+
+def stable_history_columns(columns) -> list:
+    return [c for c in columns if not c.endswith(CUMULATIVE)]
+
+
+def _history_matrix(prepared, stable=False):
+    hist = prepared.hist[stable_history_columns(prepared.hist.columns)] if stable else prepared.hist
+    return np.hstack([prepared.x, hist.to_numpy(np.float32)])
 
 
 def fraud_baselines(prepared, seed, max_iter=200) -> dict:
     y = prepared.df["isFraud"].to_numpy()
     tr, va, te = _tx_idx(prepared, "train"), _tx_idx(prepared, "val"), _tx_idx(prepared, "test")
     out = {}
-    for name, X in (("naive_tabular", prepared.x), ("history_tabular", _history_matrix(prepared))):
+    for name, X in (("naive_tabular", prepared.x), ("history_tabular", _history_matrix(prepared)),
+                    ("history_stable_tabular", _history_matrix(prepared, stable=True))):
         model = fit_hgb(X[tr], y[tr], seed, max_iter)
         out[name] = {"val": model.predict_proba(X[va])[:, 1], "test": model.predict_proba(X[te])[:, 1],
                      "model": model}

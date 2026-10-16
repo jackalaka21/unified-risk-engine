@@ -23,6 +23,12 @@ Honest scope: IEEE-CIS has no real credit-default labels. The account-level targ
 No results yet. Run `python -m scripts.run_all`, then `python -m scripts.make_model_card --readme README.md`.
 <!-- RESULTS:END -->
 
+### Findings
+
+<!-- FINDINGS:START -->
+No findings yet. They are generated from the result tables by `python -m scripts.make_model_card --readme README.md`.
+<!-- FINDINGS:END -->
+
 ## How to run
 
 ```bash
