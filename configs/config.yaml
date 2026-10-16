@@ -54,6 +54,7 @@ evaluation:
 drift:
   retrain_every_days: 28
   seed: 0
+  gnn_epochs: 5          # fixed, so the study tunes nothing on the weeks it evaluates
 
 explain:
   mode: hetero           # hetero or occlusion (set by the spike)

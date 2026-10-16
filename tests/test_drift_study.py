@@ -63,3 +63,18 @@ def test_history_tabular_drift_study_on_the_fixture(raw_frames):
     for _, g in table.groupby("schedule"):
         assert g["week"].is_monotonic_increasing
     assert table["n"].sum() > 0
+
+
+def test_the_gnn_arm_never_tunes_on_the_weeks_it_is_evaluated_on(raw_frames, monkeypatch):
+    import scripts.drift_study as ds
+
+    specs, real = [], ds.train_variant
+
+    def spy(prepared, spec, device="cpu", checkpoint_path=None):
+        specs.append(spec)
+        return real(prepared, spec, device, checkpoint_path)
+
+    monkeypatch.setattr(ds, "train_variant", spy)
+    prep = prepare(load_config(overrides=fixture_overrides()), df=raw_frames[0])
+    ds.drift_study(prep, seed=0, kinds=("gnn_fraud_only",), log=lambda *_: None)
+    assert specs and all(s.epochs is not None and len(s.fraud_val_idx) == 0 for s in specs)   # fixed epochs, no validation

@@ -64,12 +64,13 @@ def drift_study(prepared, seed=0, kinds=("history_tabular", "gnn_fraud_only"), d
                 rows = _train_rows(prepared, c)
                 scores.append(fit_hgb(X[rows], y[rows], seed).predict_proba(X[eval_rows])[:, 1])
         elif kind == "gnn_fraud_only":
-            base = train_variant(prepared, default_spec(prepared, "fraud_only", seed), device)
-            scores.append(predict_scores(prepared, base.model, base.heads, "fraud", eval_rows, device))
+            epochs = cfg["drift"]["gnn_epochs"]                       # fixed: no early stopping on the evaluated weeks
             empty = np.zeros(0, dtype=int)
+            base_rows = np.flatnonzero(prepared.graph["transaction"].train_mask.numpy())
+            base = train_variant(prepared, RunSpec("fraud_only", seed, base_rows, empty, empty, empty, epochs=epochs), device)
+            scores.append(predict_scores(prepared, base.model, base.heads, "fraud", eval_rows, device))
             for c in cutoffs:
-                spec = RunSpec("fraud_only", seed, _train_rows(prepared, c), empty, empty, empty,
-                               epochs=max(base.best_epoch, 1))
+                spec = RunSpec("fraud_only", seed, _train_rows(prepared, c), empty, empty, empty, epochs=epochs)
                 m = train_variant(prepared, spec, device)
                 scores.append(predict_scores(prepared, m.model, m.heads, "fraud", eval_rows, device))
         else:
