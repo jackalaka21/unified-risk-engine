@@ -51,6 +51,9 @@ evaluation:
   fpr_target: 0.01
   bootstrap_samples: 1000
 
+tune:
+  trials: 20           # random-search trials for the tree hyper-parameters (validation period only)
+
 drift:
   retrain_every_days: 28
   seed: 0

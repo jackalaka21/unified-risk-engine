@@ -272,3 +272,32 @@ def test_latency_table_reports_the_median_over_repeats_and_the_run_to_run_range(
     md = latency_markdown(pd.DataFrame(rows), meta)
     assert "| 30.00 |" in md and "20.00-40.00" in md                       # median p50 and its run-to-run range
     assert "median of 3 runs" in md
+
+
+def test_missing_threshold_metrics_are_shown_as_not_available(tmp_path):
+    out, reports = write_tables(tmp_path)
+    fraud = pd.read_csv(out / "results_fraud.csv")
+    fraud.loc[fraud["model"] == "multitask", ["recall_at_fpr", "cost"]] = float("nan")
+    fraud.to_csv(out / "results_fraud.csv", index=False)
+    assert "n/a" in build_model_card(out, reports) and "nan" not in build_model_card(out, reports).lower().split("## results")[1].split("## findings")[0]
+
+
+def test_findings_cover_the_account_identity_windowed_rates_tuning_bagging_and_refit():
+    from scripts.make_model_card import findings_markdown
+
+    fraud = _frames({"graph_labels_tabular": [0.52, 0.52, 0.52], "account_tabular": [0.60, 0.60, 0.60], "final_tabular": [0.62, 0.62, 0.62],
+                     "final_tuned_tabular": [0.64, 0.64, 0.64], "final_bag_tabular": [0.65, 0.65, 0.65],
+                     "final_refit_tabular": [0.68, 0.68, 0.68], "fraud_only": [0.35, 0.35, 0.35]})
+    md = findings_markdown(fraud, None)
+    for text in ("account_tabular versus graph_labels_tabular", "final_tabular versus account_tabular",
+                 "final_tuned_tabular versus final_tabular", "final_bag_tabular versus final_tuned_tabular",
+                 "final_refit_tabular versus final_bag_tabular"):
+        assert text in md, text
+    assert "Highest mean test PR-AUC: final_refit_tabular (0.680)" in md
+    assert "best tabular model is final_refit_tabular" in md
+
+
+def test_limitations_state_what_the_gnn_did_not_get(tmp_path):
+    out, reports = write_tables(tmp_path)
+    card = build_model_card(out, reports).lower()
+    assert "not tuned" in card and "refit" in card and "d1" in card

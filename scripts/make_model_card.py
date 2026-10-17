@@ -52,7 +52,7 @@ def _table(df: pd.DataFrame) -> str:
     cols = list(df.columns)
     lines = ["| " + " | ".join(cols) + " |", "|" + "|".join("---" for _ in cols) + "|"]
     for _, r in df.iterrows():
-        lines.append("| " + " | ".join(f"{v:.3f}" if isinstance(v, float) else str(v) for v in r) + " |")
+        lines.append("| " + " | ".join(("n/a" if pd.isna(v) else f"{v:.3f}") if isinstance(v, float) else str(v) for v in r) + " |")
     return "\n".join(lines)
 
 
@@ -101,7 +101,8 @@ def findings_markdown(fraud: pd.DataFrame, account=None, drift=None) -> str:
     lines.append(f"- Highest mean test PR-AUC: {best} ({means[best]:.3f}).")
     graph = [m for m in ("fraud_only", "multitask", "fraud_only_history", "multitask_history") if m in means]
     tabular = [m for m in ("naive_tabular", "history_tabular", "history_stable_tabular", "graph_shared_tabular",
-                           "graph_labels_tabular") if m in means]
+                           "graph_labels_tabular", "account_tabular", "final_tabular", "final_tuned_tabular",
+                           "final_bag_tabular", "final_refit_tabular") if m in means]
     if graph and tabular:
         g, t = max(graph, key=means.get), max(tabular, key=means.get)
         line = _compare(fraud, g, t, "Best graph model against best tabular model")
@@ -114,6 +115,11 @@ def findings_markdown(fraud: pd.DataFrame, account=None, drift=None) -> str:
                        ("multitask_history", "multitask", "Giving the GNN the history inputs (multitask)"),
                        ("graph_shared_tabular", "history_stable_tabular", "Users sharing a device or email domain, as tree features"),
                        ("graph_labels_tabular", "history_stable_tabular", "Delayed fraud rates of the entities, as tree features"),
+                       ("account_tabular", "graph_labels_tabular", "A finer account identity from D1, as tree features"),
+                       ("final_tabular", "account_tabular", "30-day windowed fraud rates, as tree features"),
+                       ("final_tuned_tabular", "final_tabular", "Tuned tree hyper-parameters"),
+                       ("final_bag_tabular", "final_tuned_tabular", "Bagging five tuned trees"),
+                       ("final_refit_tabular", "final_bag_tabular", "Refitting the bag on train + validation"),
                        ("stacked_tabular", "history_stable_tabular", "The GNN score as a tree feature"),
                        ("stacked_labels_tabular", "graph_labels_tabular", "The GNN score added to the delayed-label trees")):
         line = _compare(fraud, a, b, what)
@@ -202,6 +208,10 @@ def build_model_card(out_dir, reports_dir, fixture=False) -> str:
                  "- Label-based history features: `graph_labels_tabular` and `stacked_labels_tabular` use the delayed fraud labels of earlier transactions (any user, "
                  "only those older than the embargo) as features; a deployed system with feedback would have them, but the GNN variants "
                  "do not. `graph_labels_tabular` was chosen on validation among six variants of the extra features.\n"
+                 "- The GNN variants were not tuned, not bagged and not refit on validation, and have no D1-based account identity or "
+                 "windowed label features, so the best tree models had more done to them; `final_refit_tabular` has no validation-threshold "
+                 "metrics (recall at FPR, cost) because its validation scores are in-sample. The account identity relies on the D1 "
+                 "column, which must be present in every request.\n"
                  "- The online scorer serves only models on per-transaction inputs; the history-input GNN, the stacked and the "
                  "graph-aggregate models are evaluated offline only.\n- Nothing here is measured on real data unless the Kaggle files were supplied: check the "
                  "banner at the top of this card.\n"

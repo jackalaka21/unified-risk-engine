@@ -84,9 +84,11 @@ def test_features_and_history_are_aligned_with_rows(prep):
 
 
 def test_graph_features_are_aligned_with_rows_and_use_the_configured_embargo(prep):
-    from pipeline.graph_features import LABEL_BASED, LABEL_FREE
+    from pipeline.account_identity import ACCT_COLUMNS
+    from pipeline.graph_features import LABEL_BASED, LABEL_FREE, LABEL_WINDOWED
 
-    assert list(prep.gfeat.columns) == LABEL_FREE + LABEL_BASED and len(prep.gfeat) == len(prep.df)
+    assert list(prep.gfeat.columns) == LABEL_FREE + LABEL_BASED + LABEL_WINDOWED and len(prep.gfeat) == len(prep.df)
+    assert list(prep.acct.columns) == ACCT_COLUMNS and prep.acct.index.equals(prep.df.index)
     assert prep.gfeat.index.equals(prep.df.index)
     # nothing known in the first embargo window: every labelled count is zero for the very first rows
     assert (prep.gfeat["user_lbl_n_known"].iloc[:3] == 0).all()

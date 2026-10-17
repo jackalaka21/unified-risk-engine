@@ -86,5 +86,6 @@ def fixture_overrides():
         "train": {"temporal": importlib.util.find_spec("pyg_lib") is not None, "num_neighbors": [5, 3], "batch_fraud": 256, "batch_account": 128, "epochs": 1,
                   "patience": 2, "device": "cpu", "max_steps_per_epoch": 4},
         "evaluation": {"bootstrap_samples": 50},
+        "tune": {"trials": 2},
         "explain": {"epochs": 10, "fidelity_sample": 5, "n_explained": 2},
     }

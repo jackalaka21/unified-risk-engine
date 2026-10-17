@@ -73,3 +73,14 @@ def test_stacked_models_are_evaluated_when_asked_and_not_otherwise(prep, tmp_pat
     assert {"stacked_tabular", "stacked_labels_tabular", "graph_shared_tabular", "graph_labels_tabular"} <= models
     without = evaluate_all(prep, tmp_path / "b", variants=("fraud_only",), seeds=[0], device="cpu", log=lambda *_: None)
     assert "stacked_tabular" not in set(pd.read_csv(without["fraud"])["model"])
+
+
+def test_a_model_without_clean_validation_scores_gets_no_threshold_metrics(prep):
+    import numpy as np
+
+    te = np.flatnonzero(prep.graph["transaction"].test_mask.numpy())
+    y = prep.df["isFraud"].to_numpy()[te]
+    scores = np.clip(y * 0.4 + np.random.default_rng(0).random(len(te)) * 0.6, 0, 1)
+    row, _, _ = evaluate_fraud("refit", 0, None, scores, prep)
+    assert np.isnan(row["recall_at_fpr"]) and np.isnan(row["realised_fpr"]) and np.isnan(row["cost"])
+    assert np.isfinite(row["pr_auc"]) and np.isfinite(row["recall@0.01"]) and np.isfinite(row["cost_flag_none"])

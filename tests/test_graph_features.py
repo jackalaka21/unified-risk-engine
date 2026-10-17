@@ -2,7 +2,7 @@ import pandas as pd
 import pytest
 
 from pipeline.data_loading import finalize
-from pipeline.graph_features import LABEL_BASED, LABEL_FREE, LABEL_RATES, graph_features
+from pipeline.graph_features import LABEL_BASED, LABEL_FREE, LABEL_RATES, LABEL_WINDOWED, graph_features
 
 DAY = 86400
 
@@ -26,7 +26,7 @@ def test_shared_entities_by_hand_inside_a_seven_day_window():
     g = graph_features(df, embargo_seconds=1000)
     assert g["device_distinct_users_7d"].tolist() == [0, 1, 2, 0]    # distinct users seen on the device before this row
     assert g["email_distinct_users_7d"].tolist() == [0, 1, 2, 0]
-    assert list(g.columns) == LABEL_FREE + LABEL_BASED and not any("age" in c for c in g.columns)
+    assert list(g.columns) == LABEL_FREE + LABEL_BASED + LABEL_WINDOWED and not any("age" in c for c in g.columns)
 
 
 def test_users_older_than_seven_days_fall_out_of_the_window():
@@ -84,7 +84,7 @@ def test_missing_entities_give_nan_not_crashes():
 def test_column_groups_partition_the_output_and_the_embargo_must_be_positive(raw_frames):
     df = finalize(raw_frames[0])
     g = graph_features(df.iloc[:500], embargo_seconds=DAY)
-    assert list(g.columns) == LABEL_FREE + LABEL_BASED and set(LABEL_FREE).isdisjoint(LABEL_BASED)
+    assert list(g.columns) == LABEL_FREE + LABEL_BASED + LABEL_WINDOWED and set(LABEL_FREE).isdisjoint(LABEL_BASED)
     with pytest.raises(ValueError, match="embargo"):
         graph_features(df.iloc[:10], embargo_seconds=0)
 
@@ -97,3 +97,27 @@ def test_label_free_features_do_not_change_when_every_label_changes(raw_frames):
 
 def test_the_rate_columns_are_the_drift_robust_subset_of_the_label_based_ones():
     assert LABEL_RATES == ["user_lbl_rate", "email_lbl_rate", "device_lbl_rate"] and set(LABEL_RATES) <= set(LABEL_BASED)
+
+
+def test_windowed_rates_by_hand_forget_labels_older_than_thirty_days():
+    d = DAY
+    df = frame([("u", "e", "A", 0, 1), ("u", "e", "A", 5 * d, 0), ("u", "e", "A", 100 * d, 0), ("u", "e", "A", 110 * d, 0)])
+    g = graph_features(df, embargo_seconds=d, prior_rate=0.1, smoothing=20.0)
+    # row 3 (day 110) may use labels up to day 109, and only those from the 30 days before that: just the (clean) day-100 one
+    assert g["user_lbl_rate_30d"].iloc[3] == pytest.approx(2 / 21)
+    assert g["user_lbl_rate"].iloc[3] == pytest.approx((1 + 2) / (3 + 20))           # the all-time rate still remembers the fraud
+    # row 2 (day 100): labels up to day 99 within 30 days of that: none (the fraud is 100 days old)
+    assert g["user_lbl_rate_30d"].iloc[2] == pytest.approx(0.1)
+    # a row 10 days after the fraud sees it
+    near = frame([("u", "e", "A", 0, 1), ("u", "e", "A", 10 * d, 0)])
+    assert graph_features(near, embargo_seconds=d, prior_rate=0.1, smoothing=20.0)["user_lbl_rate_30d"].iloc[1] == pytest.approx(3 / 21)
+
+
+def test_windowed_rates_obey_the_label_delay(raw_frames):
+    df = finalize(raw_frames[0])
+    cutoff = df["TransactionDT"].quantile(0.5)
+    flipped = df.copy()
+    late = flipped["TransactionDT"] > cutoff
+    flipped.loc[late, "isFraud"] = 1 - flipped.loc[late, "isFraud"]
+    safe = (df["TransactionDT"] <= cutoff + DAY).to_numpy()
+    pd.testing.assert_frame_equal(graph_features(df, DAY)[LABEL_WINDOWED][safe], graph_features(flipped, DAY)[LABEL_WINDOWED][safe])

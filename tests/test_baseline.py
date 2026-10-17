@@ -18,7 +18,7 @@ def test_fraud_baselines_return_aligned_probabilities(prep):
     val = np.flatnonzero(prep.graph["transaction"].val_mask.numpy())
     test = np.flatnonzero(prep.graph["transaction"].test_mask.numpy())
     assert set(out) == {"naive_tabular", "history_tabular", "history_stable_tabular", "graph_shared_tabular",
-                        "graph_labels_tabular"}
+                        "graph_labels_tabular", "account_tabular", "final_tabular"}
     for res in out.values():
         assert res["val"].shape == (len(val),) and res["test"].shape == (len(test),)
         assert ((res["test"] >= 0) & (res["test"] <= 1)).all()
@@ -86,3 +86,14 @@ def test_graph_aggregate_baselines_see_exactly_their_own_extra_columns(prep):
     base = prep.x.shape[1] + len(stable_history_columns(list(prep.hist.columns)))
     assert out["graph_shared_tabular"]["model"].n_features_in_ == base + len(LABEL_FREE)
     assert out["graph_labels_tabular"]["model"].n_features_in_ == base + len(LABEL_RATES)      # rates only: raw counts only grow
+
+
+def test_account_and_final_baselines_add_exactly_their_columns(prep):
+    from pipeline.account_identity import ACCT_COLUMNS
+    from pipeline.graph_features import LABEL_RATES, LABEL_WINDOWED
+    from scripts.baseline import stable_history_columns
+
+    out = fraud_baselines(prep, seed=0, max_iter=20)
+    base = prep.x.shape[1] + len(stable_history_columns(list(prep.hist.columns))) + len(LABEL_RATES)
+    assert out["account_tabular"]["model"].n_features_in_ == base + len(ACCT_COLUMNS)
+    assert out["final_tabular"]["model"].n_features_in_ == base + len(ACCT_COLUMNS) + len(LABEL_WINDOWED)

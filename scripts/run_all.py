@@ -11,6 +11,7 @@ from scripts.drift_study import drift_study, summarize_drift
 from scripts.evaluate import evaluate_all
 from scripts.explain import explain_report
 from scripts.make_model_card import build_model_card
+from scripts.tune import tune_or_load
 from scripts.train import default_spec, train_variant
 
 
@@ -27,8 +28,9 @@ def run_all(cfg, out_dir, reports_dir, models_dir, df=None,
     if fixture:
         log("FIXTURE RUN: generated data, results are not findings")
     prepared = prepare(cfg, df=df)
+    tuned = tune_or_load(prepared, out_dir, log)
     paths = evaluate_all(prepared, out_dir, variants=variants, seeds=seeds, device=device, log=log, fixture=fixture,
-                         stacking=True)
+                         stacking=True, tuned_params=tuned)
     h = config_hash(cfg)
     drift = drift_study(prepared, seed=cfg["drift"]["seed"], kinds=drift_kinds, device=device, log=log)
     paths["drift_weekly"], paths["drift_summary"] = out_dir / "drift_weekly.csv", out_dir / "drift_summary.csv"

@@ -11,7 +11,7 @@ from pipeline.config import config_hash, load_config, resolve_device, resolve_pa
 from pipeline.history_inputs import with_history_inputs
 from pipeline.metrics import (alert_budget, bootstrap_metric, calibration, expected_cost, pr_auc,
                               recall_at_fpr, roc_auc, weekly_table)
-from scripts.baseline import account_baselines, fraud_baselines
+from scripts.baseline import account_baselines, final_baselines, fraud_baselines
 from scripts.stacking import stacked_baselines
 from scripts.train import ACCOUNT_VARIANTS, FRAUD_VARIANTS, default_spec, predict_scores, train_variant
 
@@ -33,14 +33,21 @@ def evaluate_fraud(model, seed, p_val, p_test, prepared):
            "n_test": int(len(y_test)), "prevalence": float(y_test.mean()),
            "pr_auc": pr_auc(y_test, p_test), "pr_auc_lo": lo, "pr_auc_hi": hi, "pr_auc_boot_kept": kept,
            "roc_auc": roc_auc(y_test, p_test)}
-    r = recall_at_fpr(y_val, p_val, y_test, p_test, e["fpr_target"])
-    row.update(recall_at_fpr=r["recall"], realised_fpr=r["realised_fpr"])
+    if p_val is None:                       # a refit model has no clean validation scores to choose thresholds on
+        row.update(recall_at_fpr=float("nan"), realised_fpr=float("nan"))
+    else:
+        r = recall_at_fpr(y_val, p_val, y_test, p_test, e["fpr_target"])
+        row.update(recall_at_fpr=r["recall"], realised_fpr=r["realised_fpr"])
     for b in e["alert_budgets"]:
         ab = alert_budget(y_test, p_test, a["a_test"], b)
         row.update({f"recall@{b:g}": ab["recall"], f"precision@{b:g}": ab["precision"],
                     f"amount_recall@{b:g}": ab["amount_recall"]})
-    c = expected_cost(y_val, p_val, a["a_val"], y_test, p_test, a["a_test"], e["review_cost"])
-    row.update(cost=c["cost"], cost_flag_none=c["cost_flag_none"], cost_flag_all=c["cost_flag_all"])
+    if p_val is None:
+        row.update(cost=float("nan"), cost_flag_none=float(a["a_test"][y_test == 1].sum()),
+                   cost_flag_all=float(e["review_cost"] * (y_test == 0).sum()))
+    else:
+        c = expected_cost(y_val, p_val, a["a_val"], y_test, p_test, a["a_test"], e["review_cost"])
+        row.update(cost=c["cost"], cost_flag_none=c["cost_flag_none"], cost_flag_all=c["cost_flag_all"])
     cal, table = calibration(y_test, p_test)
     row.update(cal)
     weekly = weekly_table(a["t_test"], y_test, p_test, start=prepared.periods.test_start)
@@ -63,7 +70,7 @@ HISTORY_SUFFIX = "_history"
 
 
 def evaluate_all(prepared, out_dir, variants=("multitask", "fraud_only", "account_only", "no_graph"),
-                 seeds=None, device=None, log=print, fixture=False, stacking=False) -> dict:
+                 seeds=None, device=None, log=print, fixture=False, stacking=False, tuned_params=None) -> dict:
     cfg = prepared.cfg
     seeds = cfg["train"]["seeds"] if seeds is None else seeds
     device = resolve_device(device or cfg["train"]["device"])
@@ -85,6 +92,10 @@ def evaluate_all(prepared, out_dir, variants=("multitask", "fraud_only", "accoun
         log(f"baselines seed={seed}")
         for name, res in fraud_baselines(prepared, seed).items():
             add_fraud(name, seed, res["val"], res["test"])
+        if tuned_params:
+            log(f"tuned trees seed={seed}")
+            for name, res in final_baselines(prepared, seed, tuned_params).items():
+                add_fraud(name, seed, res["val"], res["test"])
         if stacking:
             log(f"stacking seed={seed}")
             for name, res in stacked_baselines(prepared, seed, device).items():
