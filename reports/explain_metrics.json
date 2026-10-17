@@ -1,7 +1,7 @@
 {
-  "stability": 0.4167492638080873,
-  "fidelity_top": 0.31033796744421127,
-  "fidelity_random": 0.09065269102808088,
+  "stability": 0.4007948478536714,
+  "fidelity_top": 0.3401210156828165,
+  "fidelity_random": 0.0920410866336897,
   "n_fidelity": 200,
   "fidelity_method": "hetero",
   "pyg_fidelity_plus": null,

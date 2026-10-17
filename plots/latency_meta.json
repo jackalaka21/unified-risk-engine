@@ -21,5 +21,6 @@
   "indexed_transactions": 523934,
   "index_pickle_mb": 571.332597,
   "n_requests": 2000,
+  "repeats": 3,
   "notes": "one machine replaying historical data; not a production service-level claim"
 }

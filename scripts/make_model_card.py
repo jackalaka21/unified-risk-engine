@@ -233,7 +233,7 @@ def latency_markdown(df: pd.DataFrame, meta: dict) -> str:
               if p["checked"] else f"Parity with the offline scores was not checked ({p['reason']}).")
     gpu = meta["hardware"].get("gpu") or "none"
     return (_table(d) + f"\n\n{parity} Latencies are per call, in milliseconds, the median of {runs} run{"" if runs == 1 else "s"} with the run-to-run "
-            f"range of the p50 beside it; they vary noticeably on a laptop. Measured on one laptop (GPU: {gpu}; the 'cpu' rows run "
+            f"range of the p50 beside it; they depend on what else the machine is doing (runs taken while other work was running were clearly slower). Measured on one idle laptop (GPU: {gpu}; the 'cpu' rows run "
             f"on the CPU). The {meta['budget_ms']:g} ms budget is illustrative, not a requirement. One machine replaying "
             "historical data is not a production claim.")
 

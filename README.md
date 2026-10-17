@@ -129,25 +129,25 @@ curl -X POST localhost:8000/score_batch -H "Content-Type: application/json" -d '
 - Latency numbers come from one laptop replaying historical data, not a production environment; the 100 ms p99 budget is illustrative.
 
 <!-- LATENCY:START -->
-| model | device | mode | batch_size | concurrency | p50_ms | p95_ms | p99_ms | throughput_rps |
-|---|---|---|---|---|---|---|---|---|
-| gnn | cpu | inprocess | 1 | 1 | 35.26 | 42.02 | 45.84 | 27.96 |
-| gnn | cpu | inprocess | 8 | 1 | 48.22 | 56.25 | 61.25 | 163.91 |
-| gnn | cpu | inprocess | 32 | 1 | 85.38 | 97.81 | 112.46 | 373.39 |
-| gnn | cpu | inprocess | 128 | 1 | 262.92 | 293.10 | 293.38 | 481.66 |
-| gnn | cuda | inprocess | 1 | 1 | 50.31 | 61.37 | 66.89 | 19.74 |
-| gnn | cuda | inprocess | 8 | 1 | 64.92 | 78.74 | 86.12 | 121.39 |
-| gnn | cuda | inprocess | 32 | 1 | 95.21 | 105.85 | 114.22 | 337.63 |
-| gnn | cuda | inprocess | 128 | 1 | 260.41 | 278.82 | 284.03 | 491.02 |
-| gnn | cpu | http | 1 | 1 | 25.89 | 42.35 | 46.59 | 35.49 |
-| gnn | cpu | http | 32 | 1 | 64.20 | 73.94 | 77.71 | 489.48 |
-| gnn | cpu | http | 1 | 8 | 266.97 | 306.71 | 409.73 | 29.68 |
-| history_tabular | cpu | inprocess | 1 | 1 | 16.41 | 21.12 | 25.36 | 60.10 |
-| history_tabular | cpu | inprocess | 8 | 1 | 20.67 | 25.89 | 28.94 | 387.33 |
-| history_tabular | cpu | inprocess | 32 | 1 | 38.69 | 45.31 | 564.91 | 540.13 |
-| history_tabular | cpu | inprocess | 128 | 1 | 114.63 | 121.93 | 123.86 | 1139.31 |
-| history_tabular | cpu | http | 1 | 1 | 16.13 | 20.25 | 30.76 | 59.42 |
-| history_tabular | cpu | http | 1 | 8 | 307.54 | 354.53 | 408.27 | 26.62 |
+| model | device | mode | batch_size | concurrency | p50_ms | p50 range | p95_ms | p99_ms | throughput_rps |
+|---|---|---|---|---|---|---|---|---|---|
+| gnn | cpu | inprocess | 1 | 1 | 18.99 | 18.98-18.99 | 21.23 | 22.84 | 53.59 |
+| gnn | cpu | inprocess | 8 | 1 | 25.45 | 25.42-25.88 | 28.80 | 31.78 | 315.98 |
+| gnn | cpu | inprocess | 32 | 1 | 46.26 | 44.99-46.40 | 50.65 | 62.69 | 700.65 |
+| gnn | cpu | inprocess | 128 | 1 | 133.84 | 133.70-140.34 | 153.82 | 158.28 | 943.42 |
+| gnn | cuda | inprocess | 1 | 1 | 26.00 | 25.85-26.07 | 33.57 | 37.74 | 37.57 |
+| gnn | cuda | inprocess | 8 | 1 | 32.78 | 32.50-33.25 | 40.24 | 44.64 | 238.36 |
+| gnn | cuda | inprocess | 32 | 1 | 47.13 | 46.66-47.91 | 54.54 | 68.84 | 664.64 |
+| gnn | cuda | inprocess | 128 | 1 | 114.85 | 114.51-116.29 | 134.94 | 140.71 | 1078.23 |
+| gnn | cpu | http | 1 | 1 | 20.74 | 20.57-21.81 | 24.94 | 34.00 | 47.07 |
+| gnn | cpu | http | 32 | 1 | 66.89 | 60.81-76.08 | 74.65 | 81.55 | 470.13 |
+| gnn | cpu | http | 1 | 8 | 267.60 | 244.05-271.67 | 351.76 | 485.29 | 28.34 |
+| history_tabular | cpu | inprocess | 1 | 1 | 17.30 | 16.58-17.53 | 23.58 | 29.00 | 55.25 |
+| history_tabular | cpu | inprocess | 8 | 1 | 22.17 | 22.15-22.37 | 28.54 | 32.53 | 355.23 |
+| history_tabular | cpu | inprocess | 32 | 1 | 39.75 | 39.06-40.78 | 49.87 | 62.67 | 789.00 |
+| history_tabular | cpu | inprocess | 128 | 1 | 126.52 | 125.82-129.01 | 148.69 | 153.48 | 983.24 |
+| history_tabular | cpu | http | 1 | 1 | 19.75 | 18.61-19.98 | 27.36 | 35.38 | 48.50 |
+| history_tabular | cpu | http | 1 | 8 | 221.42 | 216.02-222.55 | 263.33 | 378.13 | 34.97 |
 
-Parity check passed: online and offline scores agree (max absolute difference 0.0e+00 over 200 transactions). Latencies are per call, in milliseconds, measured on one laptop (GPU: NVIDIA GeForce RTX 3070 Ti Laptop GPU; the 'cpu' rows run on the CPU). The 100 ms budget is illustrative, not a requirement. One machine replaying historical data is not a production claim.
+Parity check passed: online and offline scores agree (max absolute difference 0.0e+00 over 200 transactions). Latencies are per call, in milliseconds, the median of 3 runs with the run-to-run range of the p50 beside it; they depend on what else the machine is doing (runs taken while other work was running were clearly slower). Measured on one idle laptop (GPU: NVIDIA GeForce RTX 3070 Ti Laptop GPU; the 'cpu' rows run on the CPU). The 100 ms budget is illustrative, not a requirement. One machine replaying historical data is not a production claim.
 <!-- LATENCY:END -->
