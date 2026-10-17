@@ -18,7 +18,8 @@ CHECKPOINT_NAME = "multitask_seed0.pt"          # the checkpoint the explanation
 
 
 def run_all(cfg, out_dir, reports_dir, models_dir, df=None,
-            variants=("multitask", "fraud_only", "account_only", "no_graph"), seeds=None,
+            variants=("multitask", "fraud_only", "account_only", "no_graph", "fraud_only_history",
+                                      "multitask_history"), seeds=None,
             drift_kinds=("history_tabular", "history_stable_tabular", "gnn_fraud_only"), device=None, fixture=False, log=print):
     out_dir, reports_dir, models_dir = Path(out_dir), Path(reports_dir), Path(models_dir)
     device = resolve_device(device or cfg["train"]["device"])
@@ -26,7 +27,8 @@ def run_all(cfg, out_dir, reports_dir, models_dir, df=None,
     if fixture:
         log("FIXTURE RUN: generated data, results are not findings")
     prepared = prepare(cfg, df=df)
-    paths = evaluate_all(prepared, out_dir, variants=variants, seeds=seeds, device=device, log=log, fixture=fixture)
+    paths = evaluate_all(prepared, out_dir, variants=variants, seeds=seeds, device=device, log=log, fixture=fixture,
+                         stacking=True)
     h = config_hash(cfg)
     drift = drift_study(prepared, seed=cfg["drift"]["seed"], kinds=drift_kinds, device=device, log=log)
     paths["drift_weekly"], paths["drift_summary"] = out_dir / "drift_weekly.csv", out_dir / "drift_summary.csv"

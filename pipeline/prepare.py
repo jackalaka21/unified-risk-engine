@@ -26,6 +26,12 @@ class Prepared:
     graph: object
     entity_index: dict
     gfeat: pd.DataFrame = None        # graph-style aggregates for the tabular models (delayed labels, shared entities)
+    history_inputs: object = None     # set by with_history_inputs: the history columns appended to the model input
+
+    @property
+    def feature_names(self) -> list:
+        extra = self.history_inputs.names if self.history_inputs is not None else []
+        return list(self.transformer.feature_names) + list(extra)
 
 
 def prepare(cfg: dict, df: pd.DataFrame | None = None) -> Prepared:

@@ -8,9 +8,11 @@ import numpy as np
 import pandas as pd
 
 from pipeline.config import config_hash, load_config, resolve_device, resolve_path
+from pipeline.history_inputs import with_history_inputs
 from pipeline.metrics import (alert_budget, bootstrap_metric, calibration, expected_cost, pr_auc,
                               recall_at_fpr, roc_auc, weekly_table)
 from scripts.baseline import account_baselines, fraud_baselines
+from scripts.stacking import stacked_baselines
 from scripts.train import ACCOUNT_VARIANTS, FRAUD_VARIANTS, default_spec, predict_scores, train_variant
 
 
@@ -57,12 +59,21 @@ def evaluate_account(model, seed, p_val, p_test, prepared):
             "pr_auc": pr_auc(y_test, p_test), "roc_auc": roc_auc(y_test, p_test)}
 
 
+HISTORY_SUFFIX = "_history"
+
+
 def evaluate_all(prepared, out_dir, variants=("multitask", "fraud_only", "account_only", "no_graph"),
-                 seeds=None, device=None, log=print, fixture=False) -> dict:
+                 seeds=None, device=None, log=print, fixture=False, stacking=False) -> dict:
     cfg = prepared.cfg
     seeds = cfg["train"]["seeds"] if seeds is None else seeds
     device = resolve_device(device or cfg["train"]["device"])
     fraud_rows, account_rows, weekly, cals = [], [], [], []
+    cache = {}
+
+    def history_prepared():                                                # built once, only if a *_history variant is asked for
+        if "h" not in cache:
+            cache["h"] = with_history_inputs(prepared)
+        return cache["h"]
 
     def add_fraud(name, seed, p_val, p_test):
         row, wk, cal = evaluate_fraud(name, seed, p_val, p_test, prepared)
@@ -74,24 +85,30 @@ def evaluate_all(prepared, out_dir, variants=("multitask", "fraud_only", "accoun
         log(f"baselines seed={seed}")
         for name, res in fraud_baselines(prepared, seed).items():
             add_fraud(name, seed, res["val"], res["test"])
+        if stacking:
+            log(f"stacking seed={seed}")
+            for name, res in stacked_baselines(prepared, seed, device).items():
+                add_fraud(name, seed, res["val"], res["test"])
         for name, res in account_baselines(prepared, seed).items():
             account_rows.append(evaluate_account(name, seed, res["val"], res["test"], prepared))
-        for variant in variants:
-            log(f"training {variant} seed={seed}")
-            spec = default_spec(prepared, variant, seed)
-            res = train_variant(prepared, spec, device)
+        for name in variants:
+            log(f"training {name} seed={seed}")
+            variant = name.removesuffix(HISTORY_SUFFIX)                  # "fraud_only_history" is fraud_only on wider inputs
+            data = history_prepared() if name != variant else prepared
+            spec = default_spec(data, variant, seed)
+            res = train_variant(data, spec, device)
             if variant in FRAUD_VARIANTS:
-                va = np.flatnonzero(prepared.graph["transaction"].val_mask.numpy())
-                te = np.flatnonzero(prepared.graph["transaction"].test_mask.numpy())
-                add_fraud(variant, seed,
-                          predict_scores(prepared, res.model, res.heads, "fraud", va, device, variant=variant),
-                          predict_scores(prepared, res.model, res.heads, "fraud", te, device, variant=variant))
+                va = np.flatnonzero(data.graph["transaction"].val_mask.numpy())
+                te = np.flatnonzero(data.graph["transaction"].test_mask.numpy())
+                add_fraud(name, seed,
+                          predict_scores(data, res.model, res.heads, "fraud", va, device, variant=variant),
+                          predict_scores(data, res.model, res.heads, "fraud", te, device, variant=variant))
             if variant in ACCOUNT_VARIANTS:
-                index = prepared.entity_index["user"]
-                pos = {name: i for i, name in enumerate(index)}
-                p = {s: predict_scores(prepared, res.model, res.heads, "account",
+                index = data.entity_index["user"]
+                pos = {user: i for i, user in enumerate(index)}
+                p = {s: predict_scores(data, res.model, res.heads, "account",
                                        np.array([pos[u] for u in users[s]]), device) for s in ("val", "test")}
-                account_rows.append(evaluate_account(variant, seed, p["val"], p["test"], prepared))
+                account_rows.append(evaluate_account(name, seed, p["val"], p["test"], prepared))
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     paths = {"fraud": out_dir / "results_fraud.csv", "account": out_dir / "results_account.csv",

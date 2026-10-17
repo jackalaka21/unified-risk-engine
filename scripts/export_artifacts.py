@@ -23,6 +23,9 @@ def _git_commit() -> str:
 
 
 def export_artifacts(prepared, checkpoint, out_dir, history_until="test_start", device="cpu", fixture=False, n_samples=50):
+    if prepared.history_inputs is not None:
+        raise ValueError("this model uses history inputs, which the online scorer does not compute yet; "
+                         "export a model trained on the per-transaction features")
     model, heads, ckpt = load_checkpoint(checkpoint, prepared, device)
     if ckpt["variant"] not in ("multitask", "fraud_only"):
         raise ValueError(f"checkpoint variant {ckpt['variant']!r} has no fraud head to serve")

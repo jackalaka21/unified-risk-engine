@@ -55,3 +55,21 @@ def test_every_table_carries_the_config_hash_the_fixture_flag_and_the_bootstrap_
     assert pd.read_csv(paths["fraud"])["pr_auc_boot_kept"].between(0, 1).all()
     real = evaluate_all(prep, tmp_path / "real", variants=("fraud_only",), seeds=[0], device="cpu", log=lambda *_: None)
     assert not pd.read_csv(real["fraud"])["fixture"].any()
+
+
+def test_history_input_variants_are_trained_on_the_wider_inputs_and_reported_under_their_own_name(prep, tmp_path):
+    paths = evaluate_all(prep, tmp_path, variants=("fraud_only", "multitask_history"), seeds=[0], device="cpu",
+                         log=lambda *_: None)
+    fraud, account = pd.read_csv(paths["fraud"]), pd.read_csv(paths["account"])
+    assert {"fraud_only", "multitask_history"} <= set(fraud["model"]) and fraud["pr_auc"].notna().all()
+    assert "multitask_history" in set(account["model"])              # the history multitask model has an account head too
+    assert "fraud_only_history" not in set(fraud["model"])
+
+
+def test_stacked_models_are_evaluated_when_asked_and_not_otherwise(prep, tmp_path):
+    with_stack = evaluate_all(prep, tmp_path / "a", variants=("fraud_only",), seeds=[0], device="cpu", log=lambda *_: None,
+                              stacking=True)
+    models = set(pd.read_csv(with_stack["fraud"])["model"])
+    assert {"stacked_tabular", "stacked_labels_tabular", "graph_shared_tabular", "graph_labels_tabular"} <= models
+    without = evaluate_all(prep, tmp_path / "b", variants=("fraud_only",), seeds=[0], device="cpu", log=lambda *_: None)
+    assert "stacked_tabular" not in set(pd.read_csv(without["fraud"])["model"])

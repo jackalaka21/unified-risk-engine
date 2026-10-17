@@ -6,6 +6,14 @@ import pandas as pd
 
 DAY = 86400
 
+# Counts over a user's whole history only ever grow, so their distribution shifts between the train and test periods
+# (on IEEE-CIS the median user_n_prior is several times larger in the test period). Models that should be robust drop them.
+CUMULATIVE = ("_n_prior", "_distinct_devices", "_distinct_emails")
+
+
+def stable_history_columns(columns) -> list:
+    return [c for c in columns if not c.endswith(CUMULATIVE)]
+
 
 def _per_entity(codes: np.ndarray, t: np.ndarray, a: np.ndarray, distinct: dict | None = None) -> dict:
     n = len(t)

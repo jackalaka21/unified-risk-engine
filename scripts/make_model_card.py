@@ -99,8 +99,9 @@ def findings_markdown(fraud: pd.DataFrame, account=None, drift=None) -> str:
     lines = []
     best = max(means, key=means.get)
     lines.append(f"- Highest mean test PR-AUC: {best} ({means[best]:.3f}).")
-    graph = [m for m in ("fraud_only", "multitask") if m in means]
-    tabular = [m for m in ("naive_tabular", "history_tabular", "history_stable_tabular") if m in means]
+    graph = [m for m in ("fraud_only", "multitask", "fraud_only_history", "multitask_history") if m in means]
+    tabular = [m for m in ("naive_tabular", "history_tabular", "history_stable_tabular", "graph_shared_tabular",
+                           "graph_labels_tabular") if m in means]
     if graph and tabular:
         g, t = max(graph, key=means.get), max(tabular, key=means.get)
         line = _compare(fraud, g, t, "Best graph model against best tabular model")
@@ -108,7 +109,13 @@ def findings_markdown(fraud: pd.DataFrame, account=None, drift=None) -> str:
         lines.append(line)
     for a, b, what in (("fraud_only", "no_graph", "Graph structure"), ("multitask", "fraud_only", "The second (account) head"),
                        ("history_tabular", "naive_tabular", "History features as specified"),
-                       ("history_stable_tabular", "naive_tabular", "History features without cumulative counts")):
+                       ("history_stable_tabular", "naive_tabular", "History features without cumulative counts"),
+                       ("fraud_only_history", "fraud_only", "Giving the GNN the history inputs (fraud only)"),
+                       ("multitask_history", "multitask", "Giving the GNN the history inputs (multitask)"),
+                       ("graph_shared_tabular", "history_stable_tabular", "Users sharing a device or email domain, as tree features"),
+                       ("graph_labels_tabular", "history_stable_tabular", "Delayed fraud rates of the entities, as tree features"),
+                       ("stacked_tabular", "history_stable_tabular", "The GNN score as a tree feature"),
+                       ("stacked_labels_tabular", "graph_labels_tabular", "The GNN score added to the delayed-label trees")):
         line = _compare(fraud, a, b, what)
         if line:
             lines.append(line)
@@ -192,8 +199,11 @@ def build_model_card(out_dir, reports_dir, fixture=False) -> str:
                  "- Anonymised features limit what an explanation can say.\n- Models trained with focal loss are typically poorly "
                  "calibrated (see the ECE and Brier columns), so their scores rank transactions but are not probabilities; thresholds "
                  "are chosen on the validation period.\n- Three seeds give a range, not a confidence interval.\n"
-                 "- Label-based history features (a user's past confirmed frauds) are excluded from the baseline, so a production "
-                 "system could do better.\n- Nothing here is measured on real data unless the Kaggle files were supplied: check the "
+                 "- Label-based history features: `graph_labels_tabular` and `stacked_labels_tabular` use the delayed fraud labels of earlier transactions (any user, "
+                 "only those older than the embargo) as features; a deployed system with feedback would have them, but the GNN variants "
+                 "do not. `graph_labels_tabular` was chosen on validation among six variants of the extra features.\n"
+                 "- The online scorer serves only models on per-transaction inputs; the history-input GNN, the stacked and the "
+                 "graph-aggregate models are evaluated offline only.\n- Nothing here is measured on real data unless the Kaggle files were supplied: check the "
                  "banner at the top of this card.\n"
                  "- The review cost is an assumption.\n- Any explanation of *why* a model wins is a hypothesis unless an ablation tested it.\n")
     return "\n".join(parts)

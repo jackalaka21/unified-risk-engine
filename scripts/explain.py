@@ -160,7 +160,7 @@ def explain_report(prepared, checkpoint, out_dir, device=None):
     hetero = e["mode"] == "hetero"
     device = resolve_device(device or cfg["train"]["device"])
     model, heads, meta = load_checkpoint(checkpoint, prepared, device)
-    names = prepared.transformer.feature_names
+    names = prepared.feature_names
     te = np.flatnonzero(prepared.graph["transaction"].test_mask.numpy())
     p = predict_scores(prepared, model, heads, "fraud", te, device)
     y = prepared.df["isFraud"].to_numpy()[te]

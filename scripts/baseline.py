@@ -7,6 +7,7 @@ from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.model_selection import GroupKFold
 
 from pipeline.graph_features import LABEL_FREE, LABEL_RATES
+from pipeline.history_features import stable_history_columns  # noqa: F401  (also imported from here by callers and tests)
 
 
 class _RobustHGB(HistGradientBoostingClassifier):
@@ -35,15 +36,6 @@ def fit_hgb(X, y, seed, max_iter=200):
 
 def _tx_idx(prepared, split):
     return np.flatnonzero(prepared.graph["transaction"][f"{split}_mask"].numpy())
-
-
-# Counts over a user's whole history only ever grow, so their distribution shifts between the train and test periods
-# (on IEEE-CIS the median user_n_prior is several times larger in the test period). The "stable" baseline drops them.
-CUMULATIVE = ("_n_prior", "_distinct_devices", "_distinct_emails")
-
-
-def stable_history_columns(columns) -> list:
-    return [c for c in columns if not c.endswith(CUMULATIVE)]
 
 
 def _history_matrix(prepared, stable=False, graph=None):

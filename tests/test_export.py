@@ -80,3 +80,12 @@ def test_the_bundle_records_which_entity_types_the_model_trained_on(tmp_path):
     paths = export_artifacts(prep, tmp_path / "m.pt", tmp_path / "a", fixture=True)
     assert json.loads(paths["meta"].read_text())["entity_types"] == ["user", "email_domain"]
     assert load_bundle(tmp_path / "a").entities == ("user", "email_domain")
+
+
+def test_models_with_history_inputs_cannot_be_exported_yet(prep, tmp_path):
+    from pipeline.history_inputs import with_history_inputs
+
+    hp = with_history_inputs(prep)
+    train_variant(hp, default_spec(hp, "fraud_only", 0), "cpu", tmp_path / "h.pt")
+    with pytest.raises(ValueError, match="history inputs"):
+        export_artifacts(hp, tmp_path / "h.pt", tmp_path / "bundle", fixture=True)

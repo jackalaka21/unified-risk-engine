@@ -238,3 +238,25 @@ def test_card_text_is_clean(tmp_path):
     assert "fixture" not in drift and "config_hash" not in drift
     serving = card.split("## Serving and latency")[1].split("## Limitations")[0]
     assert "'cpu' rows run on the CPU" in serving and "| 3.20 |" in serving      # two-decimal latencies, not 3.200
+
+
+def test_findings_cover_history_inputs_stacking_and_graph_aggregates():
+    from scripts.make_model_card import findings_markdown
+
+    fraud = _frames({"history_stable_tabular": [0.46, 0.47, 0.46], "fraud_only": [0.35, 0.35, 0.35], "multitask": [0.34, 0.34, 0.34],
+                     "fraud_only_history": [0.44, 0.45, 0.44], "multitask_history": [0.43, 0.44, 0.43],
+                     "stacked_tabular": [0.50, 0.50, 0.50], "graph_shared_tabular": [0.45, 0.45, 0.45],
+                     "graph_labels_tabular": [0.52, 0.52, 0.52], "stacked_labels_tabular": [0.55, 0.55, 0.55]})
+    md = findings_markdown(fraud, None)
+    for text in ("fraud_only_history versus fraud_only", "multitask_history versus multitask", "stacked_tabular versus history_stable_tabular",
+                 "graph_shared_tabular versus history_stable_tabular", "graph_labels_tabular versus history_stable_tabular",
+                 "stacked_labels_tabular versus graph_labels_tabular"):
+        assert text in md, text
+    assert "Highest mean test PR-AUC: stacked_labels_tabular (0.550)" in md
+    assert "best graph model is fraud_only_history" in md                       # history-input GNNs count as graph models
+
+
+def test_limitations_disclose_delayed_labels_and_the_validation_selection(tmp_path):
+    out, reports = write_tables(tmp_path)
+    card = build_model_card(out, reports).lower()
+    assert "delayed" in card and "chosen on validation" in card and "online scorer" in card

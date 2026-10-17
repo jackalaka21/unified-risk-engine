@@ -25,3 +25,10 @@ def test_benchmark_default_checkpoint_is_the_one_run_all_produces():
     from scripts import benchmark_latency, run_all
 
     assert benchmark_latency.DEFAULT_CHECKPOINT == f"models/{run_all.CHECKPOINT_NAME}"
+
+
+def test_run_all_defaults_cover_the_history_input_variants_and_stacking():
+    import inspect
+
+    sig = inspect.signature(__import__("scripts.run_all", fromlist=["run_all"]).run_all)
+    assert {"fraud_only_history", "multitask_history"} <= set(sig.parameters["variants"].default)
