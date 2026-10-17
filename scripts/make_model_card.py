@@ -243,8 +243,11 @@ def latency_markdown(df: pd.DataFrame, meta: dict) -> str:
     parity = (f"Parity check passed: online and offline scores agree (max absolute difference {p['max_abs_diff']:.1e} over {p['n_rows']} transactions)."
               if p["checked"] else f"Parity with the offline scores was not checked ({p['reason']}).")
     gpu = meta["hardware"].get("gpu") or "none"
+    load = meta.get("background_cpu_percent")
+    load_note = (f" Background CPU load just before each measurement averaged {load['mean']:.0f}% (peak {load['max']:.0f}%); "
+                 "a busy machine slows the model more than the trees." if load else "")
     return (_table(d) + f"\n\n{parity} Latencies are per call, in milliseconds, the median of {runs} run{"" if runs == 1 else "s"} with the run-to-run "
-            f"range of the p50 beside it; they depend on what else the machine is doing (runs taken while other work was running were clearly slower). Measured on one idle laptop (GPU: {gpu}; the 'cpu' rows run "
+            f"range of the p50 beside it; they depend on what else the machine is doing.{load_note} Measured on one laptop (GPU: {gpu}; the 'cpu' rows run "
             f"on the CPU). The {meta['budget_ms']:g} ms budget is illustrative, not a requirement. One machine replaying "
             "historical data is not a production claim.")
 

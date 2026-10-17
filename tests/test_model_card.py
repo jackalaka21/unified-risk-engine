@@ -309,3 +309,16 @@ def test_limitations_warn_that_label_memory_features_may_exploit_how_the_dataset
     limitations = card.split("## Limitations")[1].lower()
     assert "propagated" in limitations and "hypothesis" in limitations and "labelled" in limitations
     assert "account" in limitations and "earlier fraud labels" in limitations
+
+
+def test_the_latency_note_states_the_background_load_when_it_was_recorded():
+    from scripts.make_model_card import latency_markdown
+
+    rows = [{"model": "gnn", "device": "cpu", "mode": "inprocess", "batch_size": 1, "concurrency": 1, "repeat": 0,
+             "p50_ms": 20.0, "p95_ms": 25.0, "p99_ms": 30.0, "throughput_rps": 50.0, "p99_within_budget": True}]
+    meta = {"budget_ms": 100.0, "hardware": {"gpu": "g"}, "parity": {"checked": True, "max_abs_diff": 0.0, "n_rows": 5, "reason": ""},
+            "background_cpu_percent": {"mean": 31.4, "max": 52.0, "samples": 3}}
+    md = latency_markdown(pd.DataFrame(rows), meta)
+    assert "background CPU load" in md and "31" in md and "52" in md
+    meta.pop("background_cpu_percent")
+    assert "background CPU load" not in latency_markdown(pd.DataFrame(rows), meta)         # older files without it still render

@@ -89,3 +89,10 @@ def test_every_measurement_can_be_repeated_and_the_repeat_is_recorded(prep, ckpt
     assert json.loads(paths["meta"].read_text())["repeats"] == 2
     with pytest.raises(ValueError, match="repeats"):
         run_benchmark(prep, ckpt, tmp_path / "x", repeats=0, log=lambda *_: None)
+
+
+def test_the_background_cpu_load_is_recorded_so_the_numbers_can_be_read_in_context(prep, ckpt, tmp_path):
+    paths = run_benchmark(prep, ckpt, tmp_path, devices=["cpu"], batch_sizes=(1,), n_requests=30, include_http=False,
+                          include_tabular=False, skip_parity=True, fixture=True, repeats=2, log=lambda *_: None)
+    load = json.loads(paths["meta"].read_text())["background_cpu_percent"]
+    assert 0.0 <= load["mean"] <= 100.0 and load["mean"] <= load["max"] <= 100.0 and load["samples"] == 2

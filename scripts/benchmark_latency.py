@@ -15,6 +15,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import psutil
 import torch
 
 from pipeline.config import config_hash, resolve_path
@@ -178,11 +179,12 @@ def run_benchmark(prepared, checkpoint, out_dir, devices=None, batch_sizes=(1, 8
         parity = check_parity(prepared, gnn_factory("cpu"))           # raises ParityError: nothing is written
         log(f"parity: {parity}")
 
-    rows = []
+    rows, background = [], []
 
     def add(model_name, device, mode, batch, conc, run, notes=""):
         """Run the measurement `repeats` times: timings on a laptop vary from run to run, so one number would overstate precision."""
         for r in range(repeats):
+            background.append(psutil.cpu_percent(interval=2.0))        # system load just before, while none of our work runs
             result = run()
             rows.append({"model": model_name, "device": device, "mode": mode, "batch_size": batch, "concurrency": conc,
                          "repeat": r, **result, "p99_within_budget": result.get("p99_ms", np.nan) <= budget_ms, "notes": notes})
@@ -227,7 +229,8 @@ def run_benchmark(prepared, checkpoint, out_dir, devices=None, batch_sizes=(1, 8
     meta = {"hardware": hardware_info(), "budget_ms": budget_ms, "budget_note": "illustrative assumption, not a requirement",
             "config_hash": config_hash(prepared.cfg), "fixture": bool(fixture), "parity": parity, "variant": ckpt["variant"],
             "indexed_transactions": upto, "index_pickle_mb": len(pickle.dumps(base_index)) / 1e6,
-            "n_requests": len(payloads), "repeats": repeats, "notes": "one machine replaying historical data; not a production service-level claim"}
+            "n_requests": len(payloads), "repeats": repeats,
+            "background_cpu_percent": {"mean": float(np.mean(background)), "max": float(np.max(background)), "samples": len(background)}, "notes": "one machine replaying historical data; not a production service-level claim"}
     paths = {"csv": out_dir / "latency.csv", "meta": out_dir / "latency_meta.json"}
     table.to_csv(paths["csv"], index=False)
     paths["meta"].write_text(json.dumps(meta, indent=2), encoding="utf-8")
