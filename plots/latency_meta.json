@@ -9,7 +9,7 @@
   },
   "budget_ms": 100.0,
   "budget_note": "illustrative assumption, not a requirement",
-  "config_hash": "0a4fb49dd420",
+  "config_hash": "2098e521aa7d",
   "fixture": false,
   "parity": {
     "checked": true,
@@ -22,5 +22,10 @@
   "index_pickle_mb": 571.332597,
   "n_requests": 2000,
   "repeats": 3,
+  "background_cpu_percent": {
+    "mean": 10.587037037037035,
+    "max": 74.5,
+    "samples": 54
+  },
   "notes": "one machine replaying historical data; not a production service-level claim"
 }
