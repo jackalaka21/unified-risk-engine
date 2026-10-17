@@ -8,7 +8,7 @@ is identical in both parts. Ideas A, B, D and E come from part 1; F and C from p
 
 | idea | PR-AUC on A | PR-AUC on B | B minus baseline | paired 95% CI of that difference | note |
 |---|---|---|---|---|---|
-| idea | PR-AUC on A | PR-AUC on B | B minus baseline | paired 95% CI of that difference | note |
+| baseline: graph_labels_tabular (defaults) | 0.573 | 0.480 | +0.000 | [+0.000, +0.000] |  |
 | A. tuned trees (best of 20 random trials on A) | 0.595 | 0.502 | +0.022 | [+0.012, +0.035] | learning_rate=0.065, leaves=63, min_leaf=100, l2=10.0, max_features=1.0 |
 | B. bag of 5 trees (max_features 0.7) | 0.593 | 0.507 | +0.027 | [+0.018, +0.037] |  |
 | D. refit on train + validation A (up to B start minus embargo) | n/a | 0.518 | +0.038 | [+0.026, +0.051] | A is in the training data, so no A score |
