@@ -208,6 +208,7 @@ def build_model_card(out_dir, reports_dir, fixture=False) -> str:
                  "- Label-based history features: `graph_labels_tabular` and `stacked_labels_tabular` use the delayed fraud labels of earlier transactions (any user, "
                  "only those older than the embargo) as features; a deployed system with feedback would have them, but the GNN variants "
                  "do not. `graph_labels_tabular` was chosen on validation among six variants of the extra features.\n"
+                 "- The strongest features remember an account's earlier fraud labels (the delayed rates and the D1-based account identity). My recollection, not checked here, is that IEEE-CIS fraud labels were propagated across a customer's transactions when the data was labelled; if so, these features partly exploit how the dataset was built, and a real system may see weaker label clustering. This is a hypothesis, not a finding.\n"
                  "- The GNN variants were not tuned, not bagged and not refit on validation, and have no D1-based account identity or "
                  "windowed label features, so the best tree models had more done to them; `final_refit_tabular` has no validation-threshold "
                  "metrics (recall at FPR, cost) because its validation scores are in-sample. The account identity relies on the D1 "

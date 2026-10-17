@@ -301,3 +301,11 @@ def test_limitations_state_what_the_gnn_did_not_get(tmp_path):
     out, reports = write_tables(tmp_path)
     card = build_model_card(out, reports).lower()
     assert "not tuned" in card and "refit" in card and "d1" in card
+
+
+def test_limitations_warn_that_label_memory_features_may_exploit_how_the_dataset_was_labelled(tmp_path):
+    out, reports = write_tables(tmp_path)
+    card = build_model_card(out, reports)
+    limitations = card.split("## Limitations")[1].lower()
+    assert "propagated" in limitations and "hypothesis" in limitations and "labelled" in limitations
+    assert "account" in limitations and "earlier fraud labels" in limitations
