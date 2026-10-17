@@ -79,3 +79,13 @@ def test_http_benchmark_runs_end_to_end(prep, ckpt, tmp_path):
     df = pd.read_csv(paths["csv"])
     http = df[df["mode"] == "http"]
     assert set(http["concurrency"]) == {1, 2} and http["throughput_rps"].gt(0).all()
+
+
+def test_every_measurement_can_be_repeated_and_the_repeat_is_recorded(prep, ckpt, tmp_path):
+    paths = run_benchmark(prep, ckpt, tmp_path, devices=["cpu"], batch_sizes=(1,), n_requests=30, include_http=False,
+                          include_tabular=False, skip_parity=True, fixture=True, repeats=2, log=lambda *_: None)
+    df = pd.read_csv(paths["csv"])
+    assert set(df["repeat"]) == {0, 1} and df.groupby("repeat").size().nunique() == 1
+    assert json.loads(paths["meta"].read_text())["repeats"] == 2
+    with pytest.raises(ValueError, match="repeats"):
+        run_benchmark(prep, ckpt, tmp_path / "x", repeats=0, log=lambda *_: None)

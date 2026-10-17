@@ -54,3 +54,14 @@ def test_latency_plots_draw_something():
     for fig in (ns.plot_latency(df, budget_ms=100.0), ns.plot_breakdown(df)):
         assert len(fig.axes[0].patches) + len(fig.axes[0].lines) > 0
         plt.close(fig)
+
+
+def test_aggregate_latency_takes_the_median_over_repeats_and_keeps_the_range():
+    df = pd.DataFrame({"model": "gnn", "device": "cpu", "mode": "inprocess", "batch_size": 1, "concurrency": 1,
+                       "repeat": [0, 1, 2], "p50_ms": [20.0, 30.0, 40.0], "p95_ms": [25.0, 35.0, 45.0],
+                       "p99_ms": [30.0, 40.0, 50.0], "throughput_rps": [50.0, 33.0, 25.0]})
+    out = ns.aggregate_latency(df)
+    assert len(out) == 1 and out["p50_ms"].iloc[0] == 30.0 and out["p50_min_ms"].iloc[0] == 20.0 and out["p50_max_ms"].iloc[0] == 40.0
+    assert out["repeats"].iloc[0] == 3 and out["p99_ms"].iloc[0] == 40.0
+    single = ns.aggregate_latency(df.drop(columns="repeat").iloc[:1])                      # old files without repeats still work
+    assert single["p50_min_ms"].iloc[0] == single["p50_max_ms"].iloc[0] == 20.0 and single["repeats"].iloc[0] == 1

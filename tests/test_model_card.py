@@ -260,3 +260,15 @@ def test_limitations_disclose_delayed_labels_and_the_validation_selection(tmp_pa
     out, reports = write_tables(tmp_path)
     card = build_model_card(out, reports).lower()
     assert "delayed" in card and "chosen on validation" in card and "online scorer" in card
+
+
+def test_latency_table_reports_the_median_over_repeats_and_the_run_to_run_range(tmp_path):
+    from scripts.make_model_card import latency_markdown
+
+    rows = [{"model": "gnn", "device": "cpu", "mode": "inprocess", "batch_size": 1, "concurrency": 1, "repeat": r,
+             "p50_ms": v, "p95_ms": v + 5, "p99_ms": v + 10, "throughput_rps": 1000 / v, "p99_within_budget": True}
+            for r, v in enumerate((20.0, 30.0, 40.0))]
+    meta = {"budget_ms": 100.0, "hardware": {"gpu": "g"}, "parity": {"checked": True, "max_abs_diff": 0.0, "n_rows": 5, "reason": ""}}
+    md = latency_markdown(pd.DataFrame(rows), meta)
+    assert "| 30.00 |" in md and "20.00-40.00" in md                       # median p50 and its run-to-run range
+    assert "median of 3 runs" in md

@@ -156,7 +156,9 @@ def hardware_info() -> dict:
 
 def run_benchmark(prepared, checkpoint, out_dir, devices=None, batch_sizes=(1, 8, 32, 128), n_requests=2000,
                   budget_ms=100.0, skip_parity=False, include_http=True, include_tabular=True, concurrent_clients=8,
-                  fixture=False, log=print) -> dict:
+                  fixture=False, repeats=1, log=print) -> dict:
+    if repeats < 1:
+        raise ValueError("repeats must be at least 1")
     devices = devices or (["cpu", "cuda"] if torch.cuda.is_available() else ["cpu"])
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -178,21 +180,24 @@ def run_benchmark(prepared, checkpoint, out_dir, devices=None, batch_sizes=(1, 8
 
     rows = []
 
-    def add(model_name, device, mode, batch, conc, result, notes=""):
-        rows.append({"model": model_name, "device": device, "mode": mode, "batch_size": batch, "concurrency": conc,
-                     **result, "p99_within_budget": result.get("p99_ms", np.nan) <= budget_ms, "notes": notes})
+    def add(model_name, device, mode, batch, conc, run, notes=""):
+        """Run the measurement `repeats` times: timings on a laptop vary from run to run, so one number would overstate precision."""
+        for r in range(repeats):
+            result = run()
+            rows.append({"model": model_name, "device": device, "mode": mode, "batch_size": batch, "concurrency": conc,
+                         "repeat": r, **result, "p99_within_budget": result.get("p99_ms", np.nan) <= budget_ms, "notes": notes})
 
     for device in devices:
         for b in batch_sizes:
             log(f"gnn {device} in-process batch={b}")
-            add("gnn", device, "inprocess", b, 1, bench_inprocess(gnn_factory(device), payloads, b))
+            add("gnn", device, "inprocess", b, 1, lambda: bench_inprocess(gnn_factory(device), payloads, b))
     if include_http:
         for b in sorted({1} | ({32} & set(batch_sizes))):
             log(f"gnn cpu http batch={b}")
-            add("gnn", "cpu", "http", b, 1, bench_http(gnn_factory("cpu"), payloads, b, 1))
+            add("gnn", "cpu", "http", b, 1, lambda: bench_http(gnn_factory("cpu"), payloads, b, 1))
         log(f"gnn cpu http batch=1 clients={concurrent_clients}")
         add("gnn", "cpu", "http", 1, concurrent_clients,
-            bench_http(gnn_factory("cpu", late="clamp"), payloads, 1, concurrent_clients),
+            lambda: bench_http(gnn_factory("cpu", late="clamp"), payloads, 1, concurrent_clients),
             notes="late events clamped to the newest indexed time; scoring is serialised by one lock")
     if include_tabular:
         X = np.hstack([prepared.x, prepared.hist.to_numpy(np.float32)])
@@ -205,15 +210,15 @@ def run_benchmark(prepared, checkpoint, out_dir, devices=None, batch_sizes=(1, 8
 
         for b in batch_sizes:
             log(f"history_tabular cpu in-process batch={b}")
-            add("history_tabular", "cpu", "inprocess", b, 1, bench_inprocess(tab_factory(), payloads, b),
+            add("history_tabular", "cpu", "inprocess", b, 1, lambda: bench_inprocess(tab_factory(), payloads, b),
                 notes="neighbour_lookup_ms is the history-feature computation")
         if include_http:
-            add("history_tabular", "cpu", "http", 1, 1, bench_http(tab_factory(), payloads, 1, 1))
+            add("history_tabular", "cpu", "http", 1, 1, lambda: bench_http(tab_factory(), payloads, 1, 1))
             add("history_tabular", "cpu", "http", 1, concurrent_clients,
-                bench_http(tab_factory("clamp"), payloads, 1, concurrent_clients), notes="late events clamped")
+                lambda: bench_http(tab_factory("clamp"), payloads, 1, concurrent_clients), notes="late events clamped")
     if parity["checked"]:
         sample = np.arange(upto, min(upto + 100, len(df)))
-        add("stock_neighbor_loader", "cpu", "lookup_only", 1, 1, percentiles(time_stock_loader(prepared, sample)),
+        add("stock_neighbor_loader", "cpu", "lookup_only", 1, 1, lambda: percentiles(time_stock_loader(prepared, sample)),
             notes="neighbourhood sampling only, loader built per request; no features, model or HTTP")
     table = pd.DataFrame(rows)
     for c in COMPONENTS:
@@ -222,7 +227,7 @@ def run_benchmark(prepared, checkpoint, out_dir, devices=None, batch_sizes=(1, 8
     meta = {"hardware": hardware_info(), "budget_ms": budget_ms, "budget_note": "illustrative assumption, not a requirement",
             "config_hash": config_hash(prepared.cfg), "fixture": bool(fixture), "parity": parity, "variant": ckpt["variant"],
             "indexed_transactions": upto, "index_pickle_mb": len(pickle.dumps(base_index)) / 1e6,
-            "n_requests": len(payloads), "notes": "one machine replaying historical data; not a production service-level claim"}
+            "n_requests": len(payloads), "repeats": repeats, "notes": "one machine replaying historical data; not a production service-level claim"}
     paths = {"csv": out_dir / "latency.csv", "meta": out_dir / "latency_meta.json"}
     table.to_csv(paths["csv"], index=False)
     paths["meta"].write_text(json.dumps(meta, indent=2), encoding="utf-8")
@@ -239,6 +244,7 @@ def main(argv=None):
     p.add_argument("--out", default="plots")
     p.add_argument("--n-requests", type=int, default=2000)
     p.add_argument("--budget-ms", type=float, default=100.0)
+    p.add_argument("--repeats", type=int, default=3, help="run every measurement this many times")
     p.add_argument("--fixture", action="store_true")
     a = p.parse_args(argv)
     if a.fixture:
@@ -249,7 +255,7 @@ def main(argv=None):
     else:
         prepared = prepare(load_config(a.config))
     paths = run_benchmark(prepared, resolve_path(a.checkpoint), resolve_path(a.out), n_requests=a.n_requests,
-                          budget_ms=a.budget_ms, fixture=a.fixture)
+                          budget_ms=a.budget_ms, fixture=a.fixture, repeats=a.repeats)
     print(pd.read_csv(paths["csv"])[["model", "device", "mode", "batch_size", "concurrency", "p50_ms", "p95_ms",
                                       "p99_ms", "throughput_rps"]].round(2).to_string(index=False))
 

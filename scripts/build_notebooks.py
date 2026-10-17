@@ -85,13 +85,13 @@ NOTEBOOKS = {
                  "print('FIXTURE RESULTS - not findings' if meta['fixture'] else 'real data')\nprint('hardware:', meta['hardware'])\n"
                  "print('parity with the offline scores:', meta['parity'])"),
         ("code", "cols = ['model', 'device', 'mode', 'batch_size', 'concurrency', 'p50_ms', 'p95_ms', 'p99_ms', 'throughput_rps', 'p99_within_budget']\n"
-                 "lat[cols].round(2)"),
+                 "aggregate_latency(lat)[[c for c in cols if c not in ('p99_within_budget',)] + ['p50_min_ms', 'p50_max_ms', 'repeats']].round(2)"),
         ("code", "plot_latency(lat, meta['budget_ms']);"),
         ("md", "## Where the time goes (batch size 1)"),
         ("code", "plot_breakdown(lat);"),
         ("md", "## Stock sampler versus the custom index\n\nThe `stock_neighbor_loader` row is the cost of sampling the neighbourhood "
                "alone with PyG's loader built per request; compare it with the `neighbour_lookup` share above."),
-        ("code", "lat[lat['mode'] == 'lookup_only'][['model', 'p50_ms', 'p95_ms', 'p99_ms']].round(2)"),
+        ("code", "aggregate_latency(lat[lat['mode'] == 'lookup_only'])[['model', 'p50_ms', 'p95_ms', 'p99_ms', 'repeats']].round(2)"),
         ("md", "Index size and the concurrency caveat: the metadata printed above lists the indexed transactions and the serialised "
                "index size. Scoring is serialised by one lock, so extra clients do not add throughput; the multi-client row shows "
                "the queueing cost."),

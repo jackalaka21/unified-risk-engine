@@ -107,8 +107,21 @@ def plot_drift(drift: pd.DataFrame):
     return fig
 
 
+LATENCY_KEYS = ["model", "device", "mode", "batch_size", "concurrency"]
+
+
+def aggregate_latency(df: pd.DataFrame) -> pd.DataFrame:
+    """One row per configuration: median of the latency columns over repeats, plus the run-to-run range of the median."""
+    df = df if "repeat" in df else df.assign(repeat=0)
+    g = df.groupby(LATENCY_KEYS, sort=False)
+    out = g[[c for c in ("p50_ms", "p95_ms", "p99_ms", "throughput_rps") if c in df]].median()
+    out["p50_min_ms"], out["p50_max_ms"] = g["p50_ms"].min(), g["p50_ms"].max()
+    out["repeats"] = g["repeat"].nunique()
+    return out.reset_index()
+
+
 def plot_latency(df: pd.DataFrame, budget_ms: float = 100.0):
-    d = df[df["mode"].isin(["inprocess", "http"])].copy()
+    d = aggregate_latency(df[df["mode"].isin(["inprocess", "http"])])
     d["label"] = (d["model"] + " " + d["device"] + " " + d["mode"] + " b" + d["batch_size"].astype(str)
                   + " c" + d["concurrency"].astype(str))
     fig, ax = plt.subplots(figsize=(8, 0.35 * len(d) + 1.5))
@@ -127,6 +140,7 @@ def plot_latency(df: pd.DataFrame, budget_ms: float = 100.0):
 def plot_breakdown(df: pd.DataFrame):
     comps = ["feature_transform_ms", "neighbour_lookup_ms", "model_forward_ms", "index_update_ms"]
     d = df[(df["mode"] == "inprocess") & (df["batch_size"] == 1)].dropna(subset=comps)
+    d = d.groupby(["model", "device"], sort=False)[comps].mean().reset_index()        # mean over repeats
     d = d.assign(label=d["model"] + " " + d["device"])
     fig, ax = plt.subplots(figsize=(7, 3.2))
     left = np.zeros(len(d))

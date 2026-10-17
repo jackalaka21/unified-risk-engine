@@ -8,7 +8,7 @@ from pathlib import Path
 import pandas as pd
 
 from pipeline.config import resolve_path
-from pipeline.notebook_support import seed_summary
+from pipeline.notebook_support import LATENCY_KEYS, aggregate_latency, seed_summary
 
 START, END = "<!-- RESULTS:START -->", "<!-- RESULTS:END -->"
 FRAUD_COLS = ["recall_at_fpr", "realised_fpr", "cost", "cost_flag_none", "brier", "ece"]   # plus every alert-budget column
@@ -223,16 +223,19 @@ def splice_readme(readme: str, block: str) -> str:
 
 
 def latency_markdown(df: pd.DataFrame, meta: dict) -> str:
-    cols = ["model", "device", "mode", "batch_size", "concurrency", "p50_ms", "p95_ms", "p99_ms", "throughput_rps"]
-    d = df[df["mode"].isin(["inprocess", "http"])][cols]
+    d = aggregate_latency(df[df["mode"].isin(["inprocess", "http"])])
+    d["p50 range"] = [f"{lo:.2f}-{hi:.2f}" for lo, hi in zip(d["p50_min_ms"], d["p50_max_ms"])]
+    cols = LATENCY_KEYS + ["p50_ms", "p50 range", "p95_ms", "p99_ms", "throughput_rps"]
+    d = d[cols].assign(**{c: d[c].map("{:.2f}".format) for c in ("p50_ms", "p95_ms", "p99_ms", "throughput_rps") if c in d})
+    runs = int(aggregate_latency(df)["repeats"].max())
     p = meta["parity"]
     parity = (f"Parity check passed: online and offline scores agree (max absolute difference {p['max_abs_diff']:.1e} over {p['n_rows']} transactions)."
               if p["checked"] else f"Parity with the offline scores was not checked ({p['reason']}).")
-    d = d.assign(**{c: d[c].astype(float).map("{:.2f}".format) for c in cols[5:]})
     gpu = meta["hardware"].get("gpu") or "none"
-    return (_table(d) + f"\n\n{parity} Latencies are per call, in milliseconds, measured on one laptop (GPU: {gpu}; the "
-            f"'cpu' rows run on the CPU). The {meta['budget_ms']:g} ms budget is illustrative, not a requirement. One machine "
-            "replaying historical data is not a production claim.")
+    return (_table(d) + f"\n\n{parity} Latencies are per call, in milliseconds, the median of {runs} run{"" if runs == 1 else "s"} with the run-to-run "
+            f"range of the p50 beside it; they vary noticeably on a laptop. Measured on one laptop (GPU: {gpu}; the 'cpu' rows run "
+            f"on the CPU). The {meta['budget_ms']:g} ms budget is illustrative, not a requirement. One machine replaying "
+            "historical data is not a production claim.")
 
 
 def main(argv=None):
