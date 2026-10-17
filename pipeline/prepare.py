@@ -8,6 +8,7 @@ import pandas as pd
 from pipeline.data_loading import finalize, load_raw
 from pipeline.feature_engineering import fit_on_train
 from pipeline.graph_builder import build_graph
+from pipeline.graph_features import graph_features
 from pipeline.history_features import history_features
 from pipeline.splits import account_table, check_positives, compute_periods, split_users
 
@@ -24,6 +25,7 @@ class Prepared:
     hist: pd.DataFrame
     graph: object
     entity_index: dict
+    gfeat: pd.DataFrame = None        # graph-style aggregates for the tabular models (delayed labels, shared entities)
 
 
 def prepare(cfg: dict, df: pd.DataFrame | None = None) -> Prepared:
@@ -37,4 +39,6 @@ def prepare(cfg: dict, df: pd.DataFrame | None = None) -> Prepared:
     x = transformer.transform(df)
     hist = history_features(df)
     graph, entity_index = build_graph(df, x, periods, user_split, account)
-    return Prepared(cfg, df, periods, user_split, account, transformer, x, hist, graph, entity_index)
+    train_rate = float(df.loc[df["TransactionDT"] <= periods.t_train, "isFraud"].mean())
+    gfeat = graph_features(df, periods.embargo, prior_rate=train_rate)          # labels only after the same embargo as the splits
+    return Prepared(cfg, df, periods, user_split, account, transformer, x, hist, graph, entity_index, gfeat)

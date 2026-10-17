@@ -6,6 +6,8 @@ import pandas as pd
 from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.model_selection import GroupKFold
 
+from pipeline.graph_features import LABEL_FREE, LABEL_RATES
+
 
 class _RobustHGB(HistGradientBoostingClassifier):
     """HistGradientBoostingClassifier that ignores columns that are entirely NaN in the training data.
@@ -44,9 +46,15 @@ def stable_history_columns(columns) -> list:
     return [c for c in columns if not c.endswith(CUMULATIVE)]
 
 
-def _history_matrix(prepared, stable=False):
+def _history_matrix(prepared, stable=False, graph=None):
+    """Per-transaction features + history features (+ graph aggregates: None, "free" = shared users, "labels" = delayed fraud rates)."""
     hist = prepared.hist[stable_history_columns(prepared.hist.columns)] if stable else prepared.hist
-    return np.hstack([prepared.x, hist.to_numpy(np.float32)])
+    parts = [prepared.x, hist.to_numpy(np.float32)]
+    if graph == "free":
+        parts.append(prepared.gfeat[LABEL_FREE].to_numpy(np.float32))
+    if graph == "labels":
+        parts.append(prepared.gfeat[LABEL_RATES].to_numpy(np.float32))
+    return np.hstack(parts)
 
 
 def fraud_baselines(prepared, seed, max_iter=200) -> dict:
@@ -54,7 +62,9 @@ def fraud_baselines(prepared, seed, max_iter=200) -> dict:
     tr, va, te = _tx_idx(prepared, "train"), _tx_idx(prepared, "val"), _tx_idx(prepared, "test")
     out = {}
     for name, X in (("naive_tabular", prepared.x), ("history_tabular", _history_matrix(prepared)),
-                    ("history_stable_tabular", _history_matrix(prepared, stable=True))):
+                    ("history_stable_tabular", _history_matrix(prepared, stable=True)),
+                    ("graph_shared_tabular", _history_matrix(prepared, stable=True, graph="free")),
+                    ("graph_labels_tabular", _history_matrix(prepared, stable=True, graph="labels"))):
         model = fit_hgb(X[tr], y[tr], seed, max_iter)
         out[name] = {"val": model.predict_proba(X[va])[:, 1], "test": model.predict_proba(X[te])[:, 1],
                      "model": model}

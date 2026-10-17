@@ -81,3 +81,12 @@ def test_masks_follow_the_splits(prep):
 def test_features_and_history_are_aligned_with_rows(prep):
     assert prep.x.shape[0] == len(prep.df) == prep.hist.shape[0]
     assert prep.graph["transaction"].x.shape[1] == len(prep.transformer.feature_names)
+
+
+def test_graph_features_are_aligned_with_rows_and_use_the_configured_embargo(prep):
+    from pipeline.graph_features import LABEL_BASED, LABEL_FREE
+
+    assert list(prep.gfeat.columns) == LABEL_FREE + LABEL_BASED and len(prep.gfeat) == len(prep.df)
+    assert prep.gfeat.index.equals(prep.df.index)
+    # nothing known in the first embargo window: every labelled count is zero for the very first rows
+    assert (prep.gfeat["user_lbl_n_known"].iloc[:3] == 0).all()
