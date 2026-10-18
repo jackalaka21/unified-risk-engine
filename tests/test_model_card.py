@@ -322,3 +322,11 @@ def test_the_latency_note_states_the_background_load_when_it_was_recorded():
     assert "background CPU load" in md and "31" in md and "52" in md
     meta.pop("background_cpu_percent")
     assert "background CPU load" not in latency_markdown(pd.DataFrame(rows), meta)         # older files without it still render
+
+
+def test_a_real_card_says_its_results_come_from_a_real_run_and_a_fixture_card_does_not(tmp_path):
+    out, reports = write_tables(tmp_path)
+    real, fixture = build_model_card(out, reports), build_model_card(out, reports, fixture=True)
+    assert "come from a real run on the IEEE-CIS" in real
+    assert "come from a real run" not in fixture
+    assert "check the banner" not in real and "Nothing here is measured on real data unless" not in real

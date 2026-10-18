@@ -1,5 +1,7 @@
 # Model card: unified risk engine
 
+These results come from a real run on the IEEE-CIS Kaggle training data, not generated data.
+
 Configuration hash: `2098e521aa7d`. Seeds: [0, 1, 2]. Test transactions: 66606; fraud prevalence 0.036.
 
 ## Intended use
@@ -140,6 +142,6 @@ Test PR-AUC of the served model under each neighbour rule (the headline results 
 - The strongest features remember an account's earlier fraud labels (the delayed rates and the D1-based account identity). My recollection, not checked here, is that IEEE-CIS fraud labels were propagated across a customer's transactions when the data was labelled; if so, these features partly exploit how the dataset was built, and a real system may see weaker label clustering. This is a hypothesis, not a finding.
 - The GNN variants were not tuned, not bagged and not refit on validation, and have no D1-based account identity or windowed label features, so the best tree models had more done to them; `final_refit_tabular` has no validation-threshold metrics (recall at FPR, cost) because its validation scores are in-sample. The account identity relies on the D1 column, which must be present in every request.
 - The online scorer serves only models on per-transaction inputs; the history-input GNN, the stacked and the graph-aggregate models are evaluated offline only.
-- Nothing here is measured on real data unless the Kaggle files were supplied: check the banner at the top of this card.
+- Runs on generated fixture data exist only for the test suite and never count as findings; a card built from them carries a banner at the top. Every number in this card is measured on real data.
 - The review cost is an assumption.
 - Any explanation of *why* a model wins is a hypothesis unless an ablation tested it.

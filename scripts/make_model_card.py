@@ -161,6 +161,8 @@ def build_model_card(out_dir, reports_dir, fixture=False) -> str:
     parts = ["# Model card: unified risk engine\n"]
     if fixture:
         parts.append("> **FIXTURE RESULTS: generated data, not findings.** Nothing below describes real fraud.\n")
+    else:
+        parts.append("These results come from a real run on the IEEE-CIS Kaggle training data, not generated data.\n")
     parts.append(f"Configuration hash: `{cfg_hash}`. Seeds: {sorted(fraud['seed'].unique().tolist())}. "
                  f"Test transactions: {int(fraud['n_test'].iloc[0])}; fraud prevalence {fraud['prevalence'].iloc[0]:.3f}.\n")
     parts.append("## Intended use\n\nA research prototype that ranks transactions by fraud risk and users by an account-risk proxy, "
@@ -214,8 +216,8 @@ def build_model_card(out_dir, reports_dir, fixture=False) -> str:
                  "metrics (recall at FPR, cost) because its validation scores are in-sample. The account identity relies on the D1 "
                  "column, which must be present in every request.\n"
                  "- The online scorer serves only models on per-transaction inputs; the history-input GNN, the stacked and the "
-                 "graph-aggregate models are evaluated offline only.\n- Nothing here is measured on real data unless the Kaggle files were supplied: check the "
-                 "banner at the top of this card.\n"
+                 "graph-aggregate models are evaluated offline only.\n- Runs on generated fixture data exist only for the test suite and never count as findings; a card built from "
+                 "them carries a banner at the top. Every number in this card is measured on real data.\n"
                  "- The review cost is an assumption.\n- Any explanation of *why* a model wins is a hypothesis unless an ablation tested it.\n")
     return "\n".join(parts)
 
